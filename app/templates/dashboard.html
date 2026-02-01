@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Notrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p class="subtitle">Your Alpaca paper trading account overview</p>
+</div>
+
+{% if message %}
+<div class="alert alert-success">
+    {{ message }}
+</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-error">
+    {{ error }}
+    {% if not connected %}
+    <p><a href="/connect">Go to Connect page</a></p>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if connected and account %}
+<div class="card">
+    <div class="card-header">
+        <h2>Account Summary</h2>
+        <form method="post" action="/dashboard/refresh" style="margin: 0;">
+            <button type="submit" class="btn btn-secondary btn-small">Refresh</button>
+        </form>
+    </div>
+    
+    <div class="account-summary">
+        <div class="summary-item">
+            <span class="summary-label">Portfolio Value</span>
+            <span class="summary-value">${{ "{:,.2f}".format(account.portfolio_value) }}</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Equity</span>
+            <span class="summary-value">${{ "{:,.2f}".format(account.equity) }}</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Cash</span>
+            <span class="summary-value">${{ "{:,.2f}".format(account.cash) }}</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Buying Power</span>
+            <span class="summary-value">${{ "{:,.2f}".format(account.buying_power) }}</span>
+        </div>
+    </div>
+    
+    {% if fetched_at %}
+    <p class="last-refresh">Last refresh: {{ fetched_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Current Positions</h2>
+    
+    {% if positions %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Market Value</th>
+                    <th class="text-right">Avg Entry</th>
+                    <th class="text-right">Current Price</th>
+                    <th class="text-right">Unrealized P/L</th>
+                    <th class="text-right">P/L %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pos in positions %}
+                <tr>
+                    <td class="symbol">{{ pos.symbol }}</td>
+                    <td class="text-right">{{ "{:,.4f}".format(pos.qty) }}</td>
+                    <td class="text-right">${{ "{:,.2f}".format(pos.market_value) }}</td>
+                    <td class="text-right">${{ "{:,.2f}".format(pos.avg_entry_price) }}</td>
+                    <td class="text-right">${{ "{:,.2f}".format(pos.current_price) }}</td>
+                    <td class="text-right {% if pos.unrealized_pl >= 0 %}positive{% else %}negative{% endif %}">
+                        ${{ "{:,.2f}".format(pos.unrealized_pl) }}
+                    </td>
+                    <td class="text-right {% if pos.unrealized_pl_pct >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ "{:.2f}".format(pos.unrealized_pl_pct) }}%
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="table-footer">{{ positions|length }} position(s) total</p>
+    {% else %}
+    <p class="empty-state">No positions in your account.</p>
+    {% endif %}
+</div>
+{% elif not error %}
+<div class="card">
+    <p class="empty-state">
+        <a href="/connect" class="btn btn-primary">Connect your Alpaca account</a>
+    </p>
+</div>
+{% endif %}
+{% endblock %}

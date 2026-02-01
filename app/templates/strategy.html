@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Strategy - Notrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Target Portfolio</h1>
+    <p class="subtitle">Portfolio allocation from {{ file_path }}</p>
+</div>
+
+{% if message is defined and message %}
+<div class="alert alert-success">
+    {{ message }}
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <h2>Validation Status</h2>
+        <form method="post" action="/strategy/reload" style="margin: 0;">
+            <button type="submit" class="btn btn-secondary btn-small">Reload from Disk</button>
+        </form>
+    </div>
+    
+    <div class="validation-status">
+        {% if is_valid %}
+        <span class="status-badge status-connected">Valid</span>
+        <p>Portfolio is valid and ready to use.</p>
+        {% else %}
+        <span class="status-badge status-disconnected">Invalid</span>
+        <p>Portfolio has validation errors.</p>
+        {% endif %}
+    </div>
+    
+    {% if errors %}
+    <div class="validation-errors">
+        <h3>Errors</h3>
+        <ul class="error-list">
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    {% if warnings %}
+    <div class="validation-warnings">
+        <h3>Warnings</h3>
+        <ul class="warning-list">
+            {% for warning in warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    <div class="weight-summary">
+        <span class="summary-label">Total Weight:</span>
+        <span class="summary-value {% if is_valid %}positive{% else %}negative{% endif %}">
+            {{ "{:.6f}".format(total_weight) }}
+        </span>
+        <span class="summary-note">(should be ≈ 1.0)</span>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Portfolio Allocations</h2>
+    
+    {% if portfolio %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Symbol</th>
+                    <th class="text-right">Weight</th>
+                    <th class="text-right">Percentage</th>
+                    <th>Allocation Bar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in portfolio %}
+                <tr>
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td class="symbol">{{ entry.symbol }}</td>
+                    <td class="text-right">{{ "{:.6f}".format(entry.weight) }}</td>
+                    <td class="text-right">{{ "{:.2f}".format(entry.weight * 100) }}%</td>
+                    <td>
+                        <div class="allocation-bar">
+                            <div class="allocation-fill" style="width: {% if entry.weight * 100 > 100 %}100{% else %}{{ entry.weight * 100 }}{% endif %}%;"></div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="table-footer">{{ portfolio|length }} symbol(s) total</p>
+    {% else %}
+    <p class="empty-state">No portfolio entries found.</p>
+    {% endif %}
+</div>
+{% endblock %}

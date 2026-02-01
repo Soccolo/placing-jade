@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Connect - Notrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Connect to Alpaca</h1>
+    <p class="subtitle">Enter your Alpaca PAPER trading API credentials</p>
+</div>
+
+{% if message %}
+<div class="alert alert-success">
+    {{ message }}
+</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-error">
+    {{ error }}
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="connection-status">
+        <span class="status-label">Status:</span>
+        {% if is_connected %}
+        <span class="status-badge status-connected">Connected</span>
+        {% else %}
+        <span class="status-badge status-disconnected">Not Connected</span>
+        {% endif %}
+    </div>
+    
+    {% if last_verified %}
+    <p class="last-verified">Last verified: {{ last_verified.strftime('%Y-%m-%d %H:%M:%S UTC') }}</p>
+    {% endif %}
+</div>
+
+{% if not is_connected %}
+<div class="card">
+    <h2>Enter Credentials</h2>
+    <form method="post" action="/connect/save" class="credentials-form">
+        <div class="form-group">
+            <label for="api_key">API Key</label>
+            <input type="text" 
+                   id="api_key" 
+                   name="api_key" 
+                   placeholder="PK..." 
+                   required
+                   autocomplete="off">
+        </div>
+        
+        <div class="form-group">
+            <label for="api_secret">API Secret</label>
+            <input type="password" 
+                   id="api_secret" 
+                   name="api_secret" 
+                   placeholder="Your API secret" 
+                   required
+                   autocomplete="off">
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Connect</button>
+        </div>
+    </form>
+    
+    <div class="help-text">
+        <p><strong>Important:</strong> Use PAPER trading credentials only.</p>
+        <p>Get your API keys from <a href="https://app.alpaca.markets/paper/dashboard/overview" target="_blank" rel="noopener">Alpaca Paper Trading Dashboard</a></p>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <h2>Connection Actions</h2>
+    <div class="button-group">
+        <form method="post" action="/connect/verify" style="display: inline;">
+            <button type="submit" class="btn btn-secondary">Verify Connection</button>
+        </form>
+        
+        <form method="post" action="/connect/disconnect" style="display: inline;" 
+              onsubmit="return confirm('Are you sure you want to disconnect and delete your credentials?');">
+            <button type="submit" class="btn btn-danger">Disconnect</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Update Credentials</h2>
+    <p>Enter new credentials to replace the existing ones.</p>
+    <form method="post" action="/connect/save" class="credentials-form">
+        <div class="form-group">
+            <label for="api_key">API Key</label>
+            <input type="text" 
+                   id="api_key" 
+                   name="api_key" 
+                   placeholder="PK..." 
+                   required
+                   autocomplete="off">
+        </div>
+        
+        <div class="form-group">
+            <label for="api_secret">API Secret</label>
+            <input type="password" 
+                   id="api_secret" 
+                   name="api_secret" 
+                   placeholder="Your API secret" 
+                   required
+                   autocomplete="off">
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Update Credentials</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% endblock %}
