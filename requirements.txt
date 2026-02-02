@@ -1,6 +1,7 @@
 # Notrix - Dependencies
 # Core web framework
-fastapi==0.109.1
+fastapi>=0.115.0
+starlette>=0.47.2
 uvicorn[standard]==0.27.0
 
 # Templates
@@ -17,7 +18,7 @@ cryptography==42.0.4
 alpaca-py==0.21.1
 
 # Form handling
-python-multipart==0.0.7
+python-multipart>=0.0.22
 
 # Environment variables
 python-dotenv==1.0.0
