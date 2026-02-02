@@ -79,13 +79,14 @@ def verify_connection(api_key: str, api_secret: str) -> Tuple[bool, str]:
     """
     try:
         client = create_trading_client(api_key, api_secret)
-        account = client.get_account()
+        # Verify connectivity by calling get_account
+        client.get_account()
         
         # Check that this is a paper trading account
         # Account number format or other indicators can be checked
         logger.info("Successfully verified Alpaca connection")
         
-        return True, f"Connected to Alpaca paper trading account"
+        return True, "Connected to Alpaca paper trading account"
     
     except APIError as e:
         logger.warning(f"Alpaca API error during verification: {e.status_code}")

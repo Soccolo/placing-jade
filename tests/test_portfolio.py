@@ -20,8 +20,10 @@ SPY,0.50
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is True
             assert len(result.entries) == 3
@@ -37,8 +39,8 @@ SPY,0.50
             assert weights['AAPL'] == 0.30
             assert weights['MSFT'] == 0.20
             assert weights['SPY'] == 0.50
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_duplicate_symbols(self):
         """Test that duplicate symbols are rejected."""
@@ -50,13 +52,15 @@ SPY,0.50
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is False
             assert any('Duplicate symbol' in e for e in result.errors)
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_negative_weights(self):
         """Test that negative weights are rejected."""
@@ -68,13 +72,15 @@ SPY,0.90
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is False
             assert any('Negative weight' in e for e in result.errors)
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_weight_sum_not_one(self):
         """Test that weight sum must equal 1.0 within epsilon."""
@@ -86,14 +92,16 @@ SPY,0.30
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name, epsilon=0.01)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path, epsilon=0.01)
             
             assert result.is_valid is False
             assert any('Weight sum' in e for e in result.errors)
             assert abs(result.total_weight - 0.80) < 0.001
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_weight_sum_within_epsilon(self):
         """Test that weight sum within epsilon is accepted."""
@@ -105,14 +113,16 @@ SPY,0.505
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
+            temp_path = f.name
+        
+        try:
             # Sum is 1.005, epsilon of 0.01 should accept
-            result = load_portfolio_csv(f.name, epsilon=0.01)
+            result = load_portfolio_csv(temp_path, epsilon=0.01)
             
             assert result.is_valid is True
             assert len(result.errors) == 0
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_missing_file(self):
         """Test handling of missing file."""
@@ -130,13 +140,15 @@ MSFT,0.50
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is False
             assert any('Missing required columns' in e for e in result.errors)
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_invalid_weight_format(self):
         """Test handling of non-numeric weights."""
@@ -148,13 +160,15 @@ SPY,0.50
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is False
             assert any('Invalid weight' in e for e in result.errors)
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_empty_symbol(self):
         """Test handling of empty symbols."""
@@ -166,13 +180,15 @@ SPY,0.50
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is False
             assert any('Empty symbol' in e for e in result.errors)
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_zero_weight_warning(self):
         """Test that zero weights generate warnings but don't fail."""
@@ -184,13 +200,15 @@ SPY,0.50
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is True
             assert any('Zero weight' in w for w in result.warnings)
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_symbol_case_normalization(self):
         """Test that symbols are normalized to uppercase."""
@@ -202,14 +220,16 @@ SPY,0.50
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
             f.write(content)
             f.flush()
-            
-            result = load_portfolio_csv(f.name)
+            temp_path = f.name
+        
+        try:
+            result = load_portfolio_csv(temp_path)
             
             assert result.is_valid is True
             symbols = {e.symbol for e in result.entries}
             assert symbols == {'AAPL', 'MSFT', 'SPY'}
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(temp_path)
     
     def test_real_portfolio_file(self):
         """Test loading the actual target portfolio file."""

@@ -182,6 +182,7 @@ def load_portfolio_csv(file_path: str, epsilon: float = 0.01) -> PortfolioValida
 # Cached portfolio to avoid re-reading file on every request
 _cached_portfolio: Optional[PortfolioValidationResult] = None
 _cached_file_path: Optional[str] = None
+_cached_epsilon: Optional[float] = None
 
 
 def get_portfolio(file_path: str, epsilon: float = 0.01, force_reload: bool = False) -> PortfolioValidationResult:
@@ -196,17 +197,19 @@ def get_portfolio(file_path: str, epsilon: float = 0.01, force_reload: bool = Fa
     Returns:
         PortfolioValidationResult
     """
-    global _cached_portfolio, _cached_file_path
+    global _cached_portfolio, _cached_file_path, _cached_epsilon
     
-    if force_reload or _cached_portfolio is None or _cached_file_path != file_path:
+    if force_reload or _cached_portfolio is None or _cached_file_path != file_path or _cached_epsilon != epsilon:
         _cached_portfolio = load_portfolio_csv(file_path, epsilon)
         _cached_file_path = file_path
+        _cached_epsilon = epsilon
     
     return _cached_portfolio
 
 
 def clear_portfolio_cache():
     """Clear the portfolio cache."""
-    global _cached_portfolio, _cached_file_path
+    global _cached_portfolio, _cached_file_path, _cached_epsilon
     _cached_portfolio = None
     _cached_file_path = None
+    _cached_epsilon = None

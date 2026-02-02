@@ -3,6 +3,7 @@ Dashboard Route
 
 Displays account summary and positions from Alpaca.
 """
+import asyncio
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
@@ -41,7 +42,7 @@ async def dashboard_page(request: Request):
         })
     
     # Fetch account data
-    data, message = fetch_account_data(creds.api_key, creds.api_secret)
+    data, message = await asyncio.to_thread(fetch_account_data, creds.api_key, creds.api_secret)
     
     if data:
         await log_audit_event("refreshed", f"Fetched {len(data.positions)} positions")
@@ -87,7 +88,7 @@ async def refresh_dashboard(request: Request):
         })
     
     # Fetch fresh data
-    data, message = fetch_account_data(creds.api_key, creds.api_secret)
+    data, message = await asyncio.to_thread(fetch_account_data, creds.api_key, creds.api_secret)
     
     if data:
         await update_connection_status(is_connected=True)

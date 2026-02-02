@@ -29,7 +29,14 @@ TARGET_PORTFOLIO_PATH = os.getenv(
 )
 
 # Validation settings
-WEIGHT_SUM_EPSILON = float(os.getenv("WEIGHT_SUM_EPSILON", "0.01"))
+try:
+    WEIGHT_SUM_EPSILON = float(os.getenv("WEIGHT_SUM_EPSILON", "0.01"))
+except (ValueError, TypeError) as e:
+    env_value = os.getenv("WEIGHT_SUM_EPSILON")
+    raise ValueError(
+        f"Invalid WEIGHT_SUM_EPSILON environment variable: '{env_value}'. "
+        f"Must be a numeric value (e.g., '0.01'). Error: {e}"
+    )
 
 # Alpaca base URL for paper trading
 ALPACA_PAPER_BASE_URL = "https://paper-api.alpaca.markets"

@@ -4,10 +4,12 @@ Notrix - Main Application Entry Point
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.routes import connect, dashboard, strategy
+from app.utils import is_safe_redirect_url
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,15 +44,15 @@ async def root(request: Request):
     from app.services.credentials import get_credentials
     
     creds = await get_credentials()
-    if creds and creds.is_connected:
-        return templates.TemplateResponse(
-            "redirect.html", 
-            {"request": request, "url": "/dashboard"}
-        )
-    return templates.TemplateResponse(
-        "redirect.html", 
-        {"request": request, "url": "/connect"}
-    )
+    target_url = "/dashboard" if (creds and creds.is_connected) else "/connect"
+    
+    # Validate URL before redirecting (defense in depth)
+    if not is_safe_redirect_url(target_url):
+        # Fallback to safe default
+        target_url = "/connect"
+    
+    # Use server-side redirect instead of client-side meta refresh
+    return RedirectResponse(url=target_url, status_code=302)
 
 @app.get("/health")
 async def health():

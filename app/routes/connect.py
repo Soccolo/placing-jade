@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.services.credentials import (
     save_credentials, 
@@ -56,7 +57,7 @@ async def save_and_verify(
         })
     
     # Verify connection before saving
-    success, message = verify_connection(api_key, api_secret)
+    success, message = await run_in_threadpool(verify_connection, api_key, api_secret)
     
     if success:
         # Save encrypted credentials
@@ -99,7 +100,7 @@ async def verify_existing(request: Request):
             "error": "No credentials stored. Please enter your API key and secret."
         })
     
-    success, message = verify_connection(creds.api_key, creds.api_secret)
+    success, message = await run_in_threadpool(verify_connection, creds.api_key, creds.api_secret)
     
     if success:
         await update_connection_status(is_connected=True)
