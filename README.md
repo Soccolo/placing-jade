@@ -76,6 +76,54 @@ Live data sources for the Financial Command Center are configured in code.
 7. **Open your browser**
    Navigate to: http://localhost:8000
 
+## Streamlit App (Community Cloud)
+
+Run locally:
+```bash
+streamlit run streamlit_app.py
+```
+
+Deploy on Streamlit Community Cloud:
+1. Push this repo to GitHub.
+2. Create a new app in Streamlit Community Cloud.
+3. Set the entrypoint to `streamlit_app.py`.
+4. Add `ENCRYPTION_KEY` in Streamlit Secrets.
+
+Note: Streamlit Community Cloud uses ephemeral storage; stored credentials may reset on redeploy.
+
+## Deploy on Fly.io (Recommended)
+
+Fly.io is a good fit for the FastAPI app and supports persistent volumes for SQLite.
+
+1. **Install Fly CLI**  
+   https://fly.io/docs/flyctl/install/
+
+2. **Login**
+   ```bash
+   fly auth login
+   ```
+
+3. **Create the app (choose a unique name)**
+   ```bash
+   fly launch --name notrix-app --no-deploy
+   ```
+   Update the `app` value in `fly.toml` if you picked a different name.
+
+4. **Create a volume for SQLite**
+   ```bash
+   fly volumes create notrix_data --size 1
+   ```
+
+5. **Set required secrets**
+   ```bash
+   fly secrets set ENCRYPTION_KEY=your-generated-key-here
+   ```
+
+6. **Deploy**
+   ```bash
+   fly deploy
+   ```
+
 ## Usage
 
 ### 1. Connect Your Alpaca Account

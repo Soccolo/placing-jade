@@ -3,6 +3,7 @@
 fastapi>=0.115.0
 starlette>=0.47.2
 uvicorn[standard]==0.27.0
+streamlit>=1.28.0
 
 # Templates
 jinja2==3.1.6
