@@ -8,7 +8,7 @@ __pycache__/
 .mypy_cache/
 .env
 .envrc
-.streamlit/
+.streamlit/secrets.toml
 venv/
 .venv/
 env/
