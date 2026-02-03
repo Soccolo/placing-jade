@@ -16,6 +16,18 @@ Notrix does NOT:
 - Place trades automatically
 - Modify your positions
 
+## Financial Command Center
+
+Notrix now includes a Financial Command Center with dedicated tabs for:
+- Live Market Ticker
+- Stock Research & Analysis (charts, indicators, predictions, news & sentiment)
+- Portfolio Calculator (Daily Profitability Calculator)
+- Economic News
+- Insurance News
+- Insurance Industry Tracker
+
+Live data sources for the Financial Command Center are configured in code.
+
 ## Quick Start
 
 ### Prerequisites

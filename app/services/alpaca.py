@@ -9,10 +9,7 @@ from typing import List, Optional, Tuple
 import logging
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import GetAssetsRequest
 from alpaca.common.exceptions import APIError
-
-from app.config import ALPACA_PAPER_BASE_URL
 
 # Configure logging - never log secrets
 logger = logging.getLogger(__name__)

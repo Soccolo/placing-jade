@@ -6,7 +6,7 @@ Loads and validates the target portfolio from a CSV file.
 import csv
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional
 
 
 @dataclass

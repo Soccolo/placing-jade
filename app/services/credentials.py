@@ -124,21 +124,3 @@ async def log_audit_event(event_type: str, details: Optional[str] = None) -> Non
         session.add(event)
         await session.commit()
 
-
-async def get_recent_audit_events(limit: int = 10) -> list:
-    """
-    Get recent audit events.
-    
-    Args:
-        limit: Maximum number of events to return
-    
-    Returns:
-        List of AuditLog entries, most recent first
-    """
-    async with async_session() as session:
-        result = await session.execute(
-            select(AuditLog)
-            .order_by(AuditLog.created_at.desc())
-            .limit(limit)
-        )
-        return result.scalars().all()

@@ -37,6 +37,3 @@ except (ValueError, TypeError) as e:
         f"Invalid WEIGHT_SUM_EPSILON environment variable: '{env_value}'. "
         f"Must be a numeric value (e.g., '0.01'). Error: {e}"
     )
-
-# Alpaca base URL for paper trading
-ALPACA_PAPER_BASE_URL = "https://paper-api.alpaca.markets"

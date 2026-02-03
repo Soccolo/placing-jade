@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Insurance Industry Tracker - Notrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Insurance Industry Tracker</h1>
+    <p class="subtitle">Market rates, carriers, and broker performance</p>
+</div>
+
+{% include "partials/fcc_nav.html" %}
+
+<div class="card">
+    <h2>Market Rates Overview</h2>
+    <p class="text-muted">Last updated: {{ market_rates.last_updated }}</p>
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">Global Composite</div>
+            <div class="metric-value">{{ "{:+.1f}%".format(market_rates.global_composite.rate) }}</div>
+            <div class="metric-change">{{ market_rates.global_composite.trend }}</div>
+            <div class="metric-source">{{ market_rates.global_composite.note }}</div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Line of Business</th>
+                    <th class="text-right">Global</th>
+                    <th class="text-right">UK</th>
+                    <th class="text-right">US</th>
+                    <th>Trend</th>
+                    <th>Market</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line, info in market_rates.lines_of_business.items() %}
+                <tr>
+                    <td>{{ line.replace('_', ' ').title() }}</td>
+                    <td class="text-right">{{ "{:+.1f}%".format(info.global_rate) }}</td>
+                    <td class="text-right">{{ "{:+.1f}%".format(info.uk_rate) }}</td>
+                    <td class="text-right">{{ "{:+.1f}%".format(info.us_rate) }}</td>
+                    <td>{{ info.trend }}</td>
+                    <td>{{ info.market_condition }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card sub-card">
+        <h3>Regional Summary</h3>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Region</th>
+                        <th class="text-right">Overall Rate</th>
+                        <th>Trend</th>
+                        <th>Outlook</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for region, info in market_rates.regional_summary.items() %}
+                    <tr>
+                        <td>{{ region }}</td>
+                        <td class="text-right">{{ "{:+.1f}%".format(info.overall_rate) }}</td>
+                        <td>{{ info.trend }}</td>
+                        <td>{{ info.outlook }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>UK Insurance Companies</h2>
+    {% if company_data.uk_insurers and company_data.uk_insurers|length > 0 %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Ticker</th>
+                    <th>Type</th>
+                    <th>Market</th>
+                    <th class="text-right">Price</th>
+                    <th class="text-right">Change %</th>
+                    <th class="text-right">P/E</th>
+                    <th class="text-right">Div Yield %</th>
+                    <th class="text-right">COR %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in company_data.uk_insurers %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.ticker }}</td>
+                    <td>{{ item.type }}</td>
+                    <td>{{ item.market }}</td>
+                    <td class="text-right">£{{ "{:,.2f}".format(item.price) }}</td>
+                    <td class="text-right {% if item.change_pct >= 0 %}positive{% else %}negative{% endif %}">{{ "{:+.2f}%".format(item.change_pct) }}</td>
+                    <td class="text-right">{{ item.pe_ratio or "N/A" }}</td>
+                    <td class="text-right">{{ item.dividend_yield or "N/A" }}</td>
+                    <td class="text-right">{{ item.cor or "N/A" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">No insurer data available.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Global Insurance Brokers</h2>
+    {% if company_data.global_brokers and company_data.global_brokers|length > 0 %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Ticker</th>
+                    <th>Type</th>
+                    <th>Market</th>
+                    <th class="text-right">Price</th>
+                    <th class="text-right">Change %</th>
+                    <th class="text-right">P/E</th>
+                    <th class="text-right">Div Yield %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in company_data.global_brokers %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.ticker }}</td>
+                    <td>{{ item.type }}</td>
+                    <td>{{ item.market }}</td>
+                    <td class="text-right">${{ "{:,.2f}".format(item.price) }}</td>
+                    <td class="text-right {% if item.change_pct >= 0 %}positive{% else %}negative{% endif %}">{{ "{:+.2f}%".format(item.change_pct) }}</td>
+                    <td class="text-right">{{ item.pe_ratio or "N/A" }}</td>
+                    <td class="text-right">{{ item.dividend_yield or "N/A" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">No broker data available.</p>
+    {% endif %}
+</div>
+{% endblock %}

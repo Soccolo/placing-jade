@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio Calculator - Notrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Portfolio Calculator</h1>
+    <p class="subtitle">Daily profitability calculator with options-implied distribution</p>
+</div>
+
+{% include "partials/fcc_nav.html" %}
+
+<div class="card">
+    <h2>Model Parameters</h2>
+    <form method="post" action="/command-center/portfolio-calculator" enctype="multipart/form-data">
+        <input type="hidden" name="portfolio_payload" value="{{ portfolio_payload }}">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="risk_free_rate">Risk-Free Rate</label>
+                <input type="number" step="0.0001" name="risk_free_rate" value="{{ risk_free_rate or 0.04 }}">
+            </div>
+            <div class="form-group">
+                <label for="min_volume">Minimum Volume</label>
+                <input type="number" name="min_volume" value="{{ min_volume or 20 }}">
+            </div>
+            <div class="form-group">
+                <label for="max_spread_ratio">Max Spread Ratio</label>
+                <input type="number" step="0.01" name="max_spread_ratio" value="{{ max_spread_ratio or 0.2 }}">
+            </div>
+            <div class="form-group">
+                <label for="free_capital">Free Capital ($)</label>
+                <input type="number" step="100" name="free_capital" value="{{ free_capital or 100.0 }}">
+            </div>
+            <div class="form-group">
+                <label for="var_confidence">VaR Confidence</label>
+                <select name="var_confidence">
+                    {% for option in [90, 95, 99] %}
+                    <option value="{{ option }}" {% if var_confidence == option %}selected{% endif %}>{{ option }}%</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="show_percentiles">Show Percentiles</label>
+                <select name="show_percentiles" multiple>
+                    {% for option in [1,5,10,25,50,75,90,95,99] %}
+                    <option value="{{ option }}" {% if option in show_percentiles %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="checkbox">
+                <input type="checkbox" name="show_unleveraged" value="true" {% if show_unleveraged %}checked{% endif %}>
+                Show unleveraged metrics
+            </label>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3>Portfolio Input</h3>
+        <div class="form-group">
+            <label class="radio">
+                <input type="radio" name="input_method" value="manual" {% if input_method != 'upload' %}checked{% endif %}>
+                Manual Entry
+            </label>
+            <label class="radio">
+                <input type="radio" name="input_method" value="upload" {% if input_method == 'upload' %}checked{% endif %}>
+                Upload Excel
+            </label>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="portfolio_text">Manual Portfolio (TICKER,VALUE,UNLEVERAGED)</label>
+                <textarea name="portfolio_text" rows="6" placeholder="AAPL,2000,1000&#10;MSFT,3000,1500">{{ portfolio_text }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="uploaded_file">Upload Excel</label>
+                <input type="file" name="uploaded_file" accept=".xlsx,.xls">
+                <span class="text-muted">Columns required: Stocks, Value, Unleveraged Value (optional)</span>
+            </div>
+        </div>
+
+        {% if expirations and expirations|length > 0 %}
+        <div class="form-group">
+            <label for="selected_expiration">Expiration Date</label>
+            <select name="selected_expiration">
+                <option value="">Select expiration date</option>
+                {% for expiration in expirations %}
+                <option value="{{ expiration }}" {% if selected_expiration == expiration %}selected{% endif %}>{{ expiration }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary">Run Calculation</button>
+    </form>
+
+    {% if errors and errors|length > 0 %}
+    <div class="alert alert-error">
+        {% for error in errors %}
+        <p>{{ error }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+{% if distribution_chart %}
+<div class="card">
+    <h2>Distribution</h2>
+    <div class="chart-container">{{ distribution_chart | safe }}</div>
+</div>
+{% endif %}
+
+{% if results %}
+<div class="card">
+    <h2>Summary Statistics</h2>
+    {% if results.failed_tickers and results.failed_tickers|length > 0 %}
+    <p class="text-muted">Skipped tickers: {{ results.failed_tickers | join(', ') }}</p>
+    {% endif %}
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">Position Value</div>
+            <div class="metric-value">${{ "{:,.2f}".format(results.current_value) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Expected Value</div>
+            <div class="metric-value">${{ "{:,.2f}".format(results.expected_value) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Expected Return</div>
+            <div class="metric-value">{{ "{:+.2f}%".format(results.expected_return_leveraged) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">VaR</div>
+            <div class="metric-value">${{ "{:,.2f}".format(results.var_loss) }}</div>
+        </div>
+    </div>
+
+    {% if show_unleveraged %}
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">Unleveraged Return</div>
+            <div class="metric-value">{{ "{:+.2f}%".format(results.expected_return_unleveraged) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">VaR (Unleveraged)</div>
+            <div class="metric-value">{{ "{:+.2f}%".format(results.var_loss_pct_unleveraged) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Leverage Ratio</div>
+            <div class="metric-value">{{ "{:.2f}x".format(results.leverage_ratio) }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">Probability of Profit</div>
+            <div class="metric-value">{{ "{:.1f}%".format(results.prob_profit * 100) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Probability of Loss</div>
+            <div class="metric-value">{{ "{:.1f}%".format(results.prob_loss * 100) }}</div>
+        </div>
+    </div>
+
+    {% if results.percentiles %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Percentile</th>
+                    <th class="text-right">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for percentile, value in results.percentiles.items() %}
+                <tr>
+                    <td>{{ percentile }}%</td>
+                    <td class="text-right">${{ "{:,.2f}".format(value) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

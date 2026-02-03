@@ -4,7 +4,7 @@ Tests for Portfolio CSV Loading and Validation
 import tempfile
 import os
 import pytest
-from app.services.portfolio import load_portfolio_csv, PortfolioValidationResult
+from app.services.portfolio import load_portfolio_csv
 
 
 class TestPortfolioLoader:
