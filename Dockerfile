@@ -6,17 +6,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Create data directory for SQLite database
 RUN mkdir -p /data
 
+# Install dependencies
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY app ./app
 COPY data ./data
-COPY streamlit_app.py ./
-COPY .streamlit ./.streamlit
-COPY README.md ./
+COPY .env.example ./.env.example
 
-EXPOSE 8080
+# Expose port
+EXPOSE 8000
 
-CMD ["sh", "-c", "streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port ${PORT:-8080} --server.headless true"]
+# Run the FastAPI application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
