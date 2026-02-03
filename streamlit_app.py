@@ -11,9 +11,13 @@ st.set_page_config(page_title="Notrix", page_icon="📊", layout="wide")
 
 
 def ensure_encryption_key():
-    if not os.environ.get("ENCRYPTION_KEY"):
+    if os.environ.get("ENCRYPTION_KEY"):
+        return
+    try:
         if "ENCRYPTION_KEY" in st.secrets:
             os.environ["ENCRYPTION_KEY"] = st.secrets["ENCRYPTION_KEY"]
+    except Exception:
+        pass
     if not os.environ.get("ENCRYPTION_KEY"):
         st.error(
             "ENCRYPTION_KEY is required. Set it in Streamlit Secrets or your environment."
