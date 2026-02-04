@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Live Market Ticker - Notrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Financial Command Center</h1>
+    <p class="subtitle">Live market coverage across key assets</p>
+</div>
+
+{% include "partials/fcc_nav.html" %}
+
+<div class="card">
+    <div class="card-header">
+        <h2>Live Market Ticker</h2>
+        <form method="get" action="/command-center/market-ticker" class="form-inline">
+            <label class="checkbox">
+                <input type="checkbox" name="debug" value="true" {% if debug_enabled %}checked{% endif %}>
+                Show API debug info
+            </label>
+            <button type="submit" class="btn btn-secondary btn-small">Refresh</button>
+        </form>
+    </div>
+
+    <div class="metric-grid">
+        {% for name, data in market_data.items() %}
+        <div class="metric-card">
+            <div class="metric-label">{{ name }}</div>
+            {% if data.available %}
+                <div class="metric-value">{{ "{:,.2f}".format(data.price) }}</div>
+                <div class="metric-change {% if data.change >= 0 %}positive{% else %}negative{% endif %}">
+                    {{ "{:+.2f}%".format(data.change) }}
+                </div>
+                <div class="metric-source">Source: {{ data.source }}</div>
+            {% elif data.cached %}
+                <div class="metric-value">{{ "{:,.2f}".format(data.price) }}</div>
+                <div class="metric-change text-muted">Cached</div>
+            {% else %}
+                <div class="metric-value">--</div>
+                <div class="metric-change text-muted">Unavailable</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if debug_messages and debug_messages|length > 0 %}
+    <div class="card sub-card">
+        <h3>API Debug Log</h3>
+        <ul class="text-list">
+            {% for message in debug_messages %}
+            <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

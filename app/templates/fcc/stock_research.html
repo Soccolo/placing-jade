@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Research - Notrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Stock Research &amp; Analysis</h1>
+    <p class="subtitle">Charts, indicators, predictions, and sentiment</p>
+</div>
+
+{% include "partials/fcc_nav.html" %}
+
+<div class="card">
+    <div class="card-header">
+        <h2>Research Panel</h2>
+        <form method="get" action="/command-center/stock-research" class="form-inline">
+            <div class="form-group-inline">
+                <label for="symbol">Symbol</label>
+                <input id="symbol" name="symbol" value="{{ symbol }}" placeholder="AAPL">
+            </div>
+            <div class="form-group-inline">
+                <label for="period">Period</label>
+                <select id="period" name="period">
+                    {% for option in ['1mo','3mo','6mo','1y','2y','5y'] %}
+                    <option value="{{ option }}" {% if period == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-small">Run Analysis</button>
+        </form>
+    </div>
+
+    {% if data_source %}
+    <p class="text-muted">Data source: {{ data_source }}</p>
+    {% endif %}
+
+    {% if chart_html %}
+    <div class="chart-container">{{ chart_html | safe }}</div>
+    {% else %}
+    <p class="text-muted">No price data available for {{ symbol }}.</p>
+    {% endif %}
+
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">RSI</div>
+            <div class="metric-value">
+                {% if rsi_latest is not none %}
+                    {{ "{:.2f}".format(rsi_latest) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">MACD</div>
+            <div class="metric-value">
+                {% if macd_latest is not none %}
+                    {{ "{:.4f}".format(macd_latest) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Signal</div>
+            <div class="metric-value">
+                {% if signal_latest is not none %}
+                    {{ "{:.4f}".format(signal_latest) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Prediction</h2>
+    {% if prediction %}
+    <div class="prediction-box">
+        <div class="prediction-label">{{ prediction }}</div>
+        <div class="prediction-score">{{ "{:+.1f}".format(prediction_score) if prediction_score is not none else "" }}</div>
+    </div>
+    <ul class="text-list">
+        {% for signal in prediction_signals %}
+        <li>{{ signal }}</li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted">Prediction unavailable for this symbol.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>News &amp; Sentiment</h2>
+    {% if news_source %}
+    <p class="text-muted">News source: {{ news_source }}</p>
+    {% endif %}
+    {% if news_items and news_items|length > 0 %}
+    <div class="news-list">
+        {% for item in news_items %}
+        <div class="news-card">
+            <div class="news-header">
+                <a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>
+                <span class="badge {% if item.sentiment_label == 'Positive' %}badge-positive{% elif item.sentiment_label == 'Negative' %}badge-negative{% else %}badge-neutral{% endif %}">
+                    {{ item.sentiment_label }}
+                </span>
+            </div>
+            <p class="text-muted">{{ item.publisher }}</p>
+            {% if item.summary %}
+            <p>{{ item.summary }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">No news available.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Fundamentals Snapshot</h2>
+    {% if fundamentals and fundamentals.company_info %}
+    <p class="text-muted">{{ fundamentals.company_info.name }} · {{ fundamentals.company_info.sector }} · {{ fundamentals.company_info.industry }}</p>
+    <p>{{ fundamentals.company_info.description }}</p>
+    {% endif %}
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th class="text-right">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Market Cap</td><td class="text-right">{{ (fundamentals.valuation.market_cap if fundamentals.valuation else None) or "N/A" }}</td></tr>
+                <tr><td>P/E (Trailing)</td><td class="text-right">{{ (fundamentals.valuation.pe_ratio if fundamentals.valuation else None) or "N/A" }}</td></tr>
+                <tr><td>Forward P/E</td><td class="text-right">{{ (fundamentals.valuation.forward_pe if fundamentals.valuation else None) or "N/A" }}</td></tr>
+                <tr><td>Profit Margin</td><td class="text-right">{{ (fundamentals.profitability.profit_margin if fundamentals.profitability else None) or "N/A" }}</td></tr>
+                <tr><td>ROE</td><td class="text-right">{{ (fundamentals.profitability.return_on_equity if fundamentals.profitability else None) or "N/A" }}</td></tr>
+                <tr><td>Debt/Equity</td><td class="text-right">{{ (fundamentals.financial_health.debt_to_equity if fundamentals.financial_health else None) or "N/A" }}</td></tr>
+                <tr><td>Revenue Growth</td><td class="text-right">{{ (fundamentals.growth.revenue_growth if fundamentals.growth else None) or "N/A" }}</td></tr>
+                <tr><td>Dividend Yield</td><td class="text-right">{{ (fundamentals.dividends.dividend_yield if fundamentals.dividends else None) or "N/A" }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
