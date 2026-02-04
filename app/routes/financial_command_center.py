@@ -39,7 +39,7 @@ from app.financial_command_center.logic import (
     get_stock_news_multi_source,
     predict_stock_movement,
     ticker_prediction,
-    union_of_lists,
+    intersection_of_lists,
 )
 
 router = APIRouter()
@@ -241,7 +241,7 @@ async def portfolio_calculator_run(
                 expiration_lists.append(ticker_data.options)
             except Exception:
                 expiration_lists.append([])
-        expirations = sorted(union_of_lists(expiration_lists))
+        expirations = sorted(intersection_of_lists(expiration_lists))
         if expirations and (pd.to_datetime(expirations[0]) - pd.Timestamp.today()).days <= 0:
             expirations = expirations[1:]
 
@@ -294,7 +294,7 @@ async def portfolio_calculator_run(
                 investment_values = investment_values + free_capital
 
             expected_value = float(
-                np.trapezoid(investment_values * pdf_values, investment_values)
+                np.trapz(investment_values * pdf_values, investment_values)
             )
             current_value_leveraged = float(dataframe["Value"].sum() + free_capital)
             unleveraged_capital = float(
@@ -403,8 +403,33 @@ def economic_news(request: Request):
 
 @router.get("/command-center/insurance-news")
 def insurance_news(request: Request):
+    from urllib.parse import urlparse
+    
     context = build_fcc_context(request, active_tab="insurance-news")
-    news_items = get_insurance_news()
+    news_items_raw = get_insurance_news()
+    
+    # Validate and sanitize URLs - block dangerous schemes
+    dangerous_schemes = {"javascript", "data", "vbscript", "file", "about"}
+    news_items = []
+    for item in news_items_raw:
+        # Create a copy of the item
+        validated_item = item.copy()
+        # Validate the link - set to '#' if unsafe
+        if "link" in item and item["link"]:
+            try:
+                parsed = urlparse(item["link"])
+                # Block dangerous schemes
+                if parsed.scheme and parsed.scheme.lower() in dangerous_schemes:
+                    validated_item["link"] = "#"
+                # Only allow http/https for external links
+                elif parsed.scheme and parsed.scheme.lower() not in {"http", "https"}:
+                    validated_item["link"] = "#"
+            except Exception:
+                validated_item["link"] = "#"
+        else:
+            validated_item["link"] = "#"
+        news_items.append(validated_item)
+    
     context.update({"news_items": news_items})
     return templates.TemplateResponse("fcc/insurance_news.html", context)
 

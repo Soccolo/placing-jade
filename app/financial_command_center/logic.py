@@ -763,8 +763,19 @@ def calculate_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
     price_delta = prices.diff()
     gain = price_delta.where(price_delta > 0, 0).rolling(window=period).mean()
     loss = (-price_delta.where(price_delta < 0, 0)).rolling(window=period).mean()
+    
+    # Calculate relative strength, handling division by zero
     relative_strength = gain / loss
     rsi_values = 100 - (100 / (1 + relative_strength))
+    
+    # Handle edge cases to avoid inf/NaN
+    # When loss == 0 and gain > 0, RSI = 100
+    rsi_values = rsi_values.where(~((loss == 0) & (gain > 0)), 100)
+    # When gain == 0 and loss > 0, RSI = 0
+    rsi_values = rsi_values.where(~((gain == 0) & (loss > 0)), 0)
+    # When both gain and loss are 0, RSI = 50
+    rsi_values = rsi_values.where(~((gain == 0) & (loss == 0)), 50)
+    
     return rsi_values
 
 
@@ -928,13 +939,14 @@ def build_pdf(
 def smooth_pdf(strike_grid: np.ndarray, pdf_raw: np.ndarray) -> np.ndarray:
     kernel_density = gaussian_kde(strike_grid, weights=pdf_raw)
     pdf_smoothed = kernel_density(strike_grid)
-    area = np.trapezoid(pdf_smoothed, strike_grid)
+    area = np.trapz(pdf_smoothed, strike_grid)
     if area > 0:
         pdf_smoothed /= area
     return pdf_smoothed
 
 
-def union_of_lists(lists: List[List[str]]) -> List[str]:
+def intersection_of_lists(lists: List[List[str]]) -> List[str]:
+    """Returns the intersection of multiple lists."""
     if not lists:
         return []
     intersection_set = set(lists[0])
@@ -968,7 +980,7 @@ def convolve_pdfs(x_lists: List[np.ndarray], pdf_lists: List[np.ndarray]) -> Tup
         x_result = x_min_new + np.arange(len(pdf_convolved)) * dx_step
         pdf_result = pdf_convolved
 
-    pdf_result = pdf_result / np.trapezoid(pdf_result, x_result)
+    pdf_result = pdf_result / np.trapz(pdf_result, x_result)
     return x_result, pdf_result
 
 
@@ -1000,7 +1012,7 @@ def calculate_probability_below(
         return 0.0
     x_below = x_values[mask]
     pdf_below = pdf_values[mask]
-    return np.trapezoid(pdf_below, x_below)
+    return np.trapz(pdf_below, x_below)
 
 
 def ticker_prediction(
@@ -1076,10 +1088,10 @@ def ticker_prediction(
         sys.stderr = old_stderr
         return investment_grid, pdf_smoothed_over_investment
 
-    except Exception as error:
+    except Exception:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
-        raise error
+        raise
 
 
 def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:

@@ -36,10 +36,21 @@ def build_stock_analysis_chart(
             col=1,
         )
     else:
+        # Fallback to line chart with safe column selection
+        if "Close" in price_history.columns:
+            y_data = price_history["Close"]
+        else:
+            # Use the first numeric column if Close is missing
+            numeric_cols = price_history.select_dtypes(include=['number']).columns
+            if len(numeric_cols) > 0:
+                y_data = price_history[numeric_cols[0]]
+            else:
+                raise ValueError("No numeric columns found in price_history DataFrame")
+        
         figure.add_trace(
             go.Scatter(
                 x=price_history.index,
-                y=price_history["Close"],
+                y=y_data,
                 mode="lines",
                 name="Price",
             ),

@@ -134,14 +134,14 @@
                 </tr>
             </thead>
             <tbody>
-                <tr><td>Market Cap</td><td class="text-right">{{ fundamentals.valuation.market_cap or "N/A" }}</td></tr>
-                <tr><td>P/E (Trailing)</td><td class="text-right">{{ fundamentals.valuation.pe_ratio or "N/A" }}</td></tr>
-                <tr><td>Forward P/E</td><td class="text-right">{{ fundamentals.valuation.forward_pe or "N/A" }}</td></tr>
-                <tr><td>Profit Margin</td><td class="text-right">{{ fundamentals.profitability.profit_margin or "N/A" }}</td></tr>
-                <tr><td>ROE</td><td class="text-right">{{ fundamentals.profitability.return_on_equity or "N/A" }}</td></tr>
-                <tr><td>Debt/Equity</td><td class="text-right">{{ fundamentals.financial_health.debt_to_equity or "N/A" }}</td></tr>
-                <tr><td>Revenue Growth</td><td class="text-right">{{ fundamentals.growth.revenue_growth or "N/A" }}</td></tr>
-                <tr><td>Dividend Yield</td><td class="text-right">{{ fundamentals.dividends.dividend_yield or "N/A" }}</td></tr>
+                <tr><td>Market Cap</td><td class="text-right">{{ (fundamentals.valuation.market_cap if fundamentals.valuation else None) or "N/A" }}</td></tr>
+                <tr><td>P/E (Trailing)</td><td class="text-right">{{ (fundamentals.valuation.pe_ratio if fundamentals.valuation else None) or "N/A" }}</td></tr>
+                <tr><td>Forward P/E</td><td class="text-right">{{ (fundamentals.valuation.forward_pe if fundamentals.valuation else None) or "N/A" }}</td></tr>
+                <tr><td>Profit Margin</td><td class="text-right">{{ (fundamentals.profitability.profit_margin if fundamentals.profitability else None) or "N/A" }}</td></tr>
+                <tr><td>ROE</td><td class="text-right">{{ (fundamentals.profitability.return_on_equity if fundamentals.profitability else None) or "N/A" }}</td></tr>
+                <tr><td>Debt/Equity</td><td class="text-right">{{ (fundamentals.financial_health.debt_to_equity if fundamentals.financial_health else None) or "N/A" }}</td></tr>
+                <tr><td>Revenue Growth</td><td class="text-right">{{ (fundamentals.growth.revenue_growth if fundamentals.growth else None) or "N/A" }}</td></tr>
+                <tr><td>Dividend Yield</td><td class="text-right">{{ (fundamentals.dividends.dividend_yield if fundamentals.dividends else None) or "N/A" }}</td></tr>
             </tbody>
         </table>
     </div>

@@ -51,7 +51,7 @@ from app.financial_command_center.logic import (
     get_stock_news_multi_source,
     predict_stock_movement,
     ticker_prediction,
-    union_of_lists,
+    intersection_of_lists,
 )
 from app.services.alpaca import fetch_account_data, verify_connection
 from app.services.credentials import (
@@ -423,7 +423,7 @@ def render_portfolio_calculator():
         except Exception:
             expiration_lists.append([])
 
-    possible_expirations = sorted(union_of_lists(expiration_lists))
+    possible_expirations = sorted(intersection_of_lists(expiration_lists))
     if possible_expirations and (
         pd.to_datetime(possible_expirations[0]) - pd.Timestamp.today()
     ).days <= 0:
@@ -474,7 +474,7 @@ def render_portfolio_calculator():
         investment_values, pdf_values = convolve_pdfs(investment_grid_list, pdf_smooth_list)
         investment_values = investment_values + free_capital
 
-    expected_value = float(np.trapezoid(investment_values * pdf_values, investment_values))
+    expected_value = float(np.trapz(investment_values * pdf_values, investment_values))
     current_value = float(stock_list["Value"].sum() + free_capital)
     unleveraged_capital = float(stock_list["Unleveraged Value"].sum() + free_capital)
     expected_gain = expected_value - current_value
