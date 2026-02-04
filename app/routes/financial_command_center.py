@@ -195,13 +195,16 @@ async def portfolio_calculator_run(
     max_spread_ratio: float = Form(0.2),
     free_capital: float = Form(100.0),
     var_confidence: int = Form(95),
-    show_percentiles: List[int] = Form([]),
+    show_percentiles: Optional[List[int]] = Form(default=None),
     show_unleveraged: Optional[bool] = Form(False),
     selected_expiration: str = Form(""),
     portfolio_payload: str = Form(""),
 ):
     context = build_fcc_context(request, active_tab="portfolio")
     errors: List[str] = []
+
+    if show_percentiles is None:
+        show_percentiles = []
 
     percentiles = []
     for percentile in show_percentiles:

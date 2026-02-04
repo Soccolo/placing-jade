@@ -191,47 +191,47 @@ def get_fmp_quote(symbol: str, api_key: str) -> Optional[Dict[str, float]]:
 
 
 def fetch_from_yahoo_download(symbol: str, period: str = "5d") -> Optional[pd.DataFrame]:
-    try:
-        import io
-        import sys
+    import io
+    import sys
 
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    try:
         sys.stdout = io.StringIO()
         sys.stderr = io.StringIO()
 
         data = yf.download(symbol, period=period, progress=False, auto_adjust=True)
 
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-
         if data is not None and len(data) > 0:
             return data
     except Exception:
         return None
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
     return None
 
 
 def fetch_from_ticker_history(symbol: str, period: str = "5d") -> Optional[pd.DataFrame]:
-    try:
-        import io
-        import sys
+    import io
+    import sys
 
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    try:
         sys.stdout = io.StringIO()
         sys.stderr = io.StringIO()
 
         ticker = yf.Ticker(symbol)
         data = ticker.history(period=period)
 
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-
         if data is not None and len(data) > 0:
             return data
     except Exception:
         return None
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
     return None
 
 
