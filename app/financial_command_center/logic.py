@@ -468,18 +468,15 @@ def get_stock_news(symbol: str) -> List[Dict[str, str]]:
     import io
     import sys
 
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
     try:
         time.sleep(0.3)
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
         sys.stdout = io.StringIO()
         sys.stderr = io.StringIO()
 
         ticker = yf.Ticker(symbol)
         news_items = ticker.news
-
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
 
         if news_items:
             normalized_news = []
@@ -541,6 +538,9 @@ def get_stock_news(symbol: str) -> List[Dict[str, str]]:
         return []
     except Exception:
         return []
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 
 def get_finnhub_news(symbol: str, api_key: str) -> List[Dict[str, str]]:
@@ -603,20 +603,17 @@ def get_fundamental_data(symbol: str, api_keys: Optional[Dict[str, str]] = None)
         "source": None,
     }
 
-    try:
-        import io
-        import sys
+    import io
+    import sys
 
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    try:
         sys.stdout = io.StringIO()
         sys.stderr = io.StringIO()
 
         ticker = yf.Ticker(symbol)
         info = ticker.info
-
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
 
         if info:
             fundamentals["valuation"] = {
@@ -686,7 +683,10 @@ def get_fundamental_data(symbol: str, api_keys: Optional[Dict[str, str]] = None)
             }
             fundamentals["source"] = "Yahoo Finance"
     except Exception:
-        return fundamentals
+        pass
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
     return fundamentals
 
@@ -860,7 +860,15 @@ def predict_stock_movement(hist: pd.DataFrame):
         score -= 0.5
         signals.append("Short-term trend down (20 < 50 SMA)")
 
-    max_score = 6.5
+    if len(close_prices) >= 200:
+        if current_price > sma_200:
+            score += 1
+            signals.append("Price above 200-day SMA (bullish)")
+        else:
+            score -= 1
+            signals.append("Price below 200-day SMA (bearish)")
+
+    max_score = 7.5 if len(close_prices) >= 200 else 6.5
     normalized_score = (score / max_score) * 100
 
     if normalized_score > 30:
@@ -1130,18 +1138,15 @@ def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:
     import sys
 
     for ticker, info in uk_insurers.items():
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
         try:
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
             sys.stdout = io.StringIO()
             sys.stderr = io.StringIO()
 
             stock = yf.Ticker(ticker)
             history = stock.history(period="5d")
             stock_info = stock.info
-
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
 
             if not history.empty:
                 current_price = history["Close"].iloc[-1]
@@ -1175,20 +1180,20 @@ def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:
                 )
         except Exception:
             continue
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
 
     for ticker, info in global_brokers.items():
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
         try:
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
             sys.stdout = io.StringIO()
             sys.stderr = io.StringIO()
 
             stock = yf.Ticker(ticker)
             history = stock.history(period="5d")
             stock_info = stock.info
-
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
 
             if not history.empty:
                 current_price = history["Close"].iloc[-1]
@@ -1217,6 +1222,9 @@ def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:
                 )
         except Exception:
             continue
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
 
     return results
 
