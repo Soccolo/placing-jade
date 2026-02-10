@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
-st.set_page_config(page_title="Notrix", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Placing Jade Terminal", page_icon="💎", layout="wide")
 
 
 def ensure_encryption_key():
@@ -78,7 +78,7 @@ def ensure_db():
 
 
 def show_logo():
-    logo_path = Path(__file__).parent / "app" / "static" / "notrix_logo.png"
+    logo_path = Path(__file__).parent / "app" / "static" / "placing_jade_logo.png"
     if logo_path.exists():
         st.sidebar.image(str(logo_path), width=120)
 
@@ -671,7 +671,7 @@ def render_command_center():
 def main():
     ensure_db()
     show_logo()
-    st.sidebar.title("Notrix")
+    st.sidebar.title("Placing Jade Terminal")
     page = st.sidebar.radio("Navigation", ["Connect", "Dashboard", "Strategy", "Command Center"])
 
     if page == "Connect":
