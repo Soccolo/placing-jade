@@ -1232,7 +1232,7 @@ def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:
 def simulate_portfolio_pnl(
     tickers: List[str],
     quantities: List[float],
-    start_date: str = "2026-01-01",
+    start_date: str = "2022-01-01",
     num_simulations: int = 10_000,
 ) -> Optional[Dict[str, object]]:
     """
