@@ -1229,6 +1229,116 @@ def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:
     return results
 
 
+def simulate_portfolio_pnl(
+    tickers: List[str],
+    quantities: List[float],
+    start_date: str = "2022-01-01",
+    num_simulations: int = 10_000,
+) -> Optional[Dict[str, object]]:
+    """
+    Run a one-day Monte Carlo simulation on a portfolio using
+    Cholesky-correlated GBM draws on the log-return covariance matrix.
+
+    Returns a dict with simulation results or None on failure.
+    """
+    if not tickers or not quantities:
+        return None
+
+    shares = np.array(quantities, dtype=float)
+
+    # Download aligned price history for all tickers at once
+    try:
+        raw = yf.download(tickers, start=start_date, progress=False)
+        if raw is None or raw.empty:
+            return None
+
+        # Handle yfinance MultiIndex columns
+        if isinstance(raw.columns, pd.MultiIndex):
+            prices = raw["Close"]
+        else:
+            prices = raw[["Close"]]
+            prices.columns = tickers
+
+        # If single ticker, yf may return Series
+        if isinstance(prices, pd.Series):
+            prices = prices.to_frame(name=tickers[0])
+
+        # Keep only requested tickers that have data
+        available = [t for t in tickers if t in prices.columns]
+        if not available:
+            return None
+
+        prices = prices[available].dropna()
+        if len(prices) < 30:
+            return None
+
+        # Filter shares to match available tickers
+        avail_shares = np.array(
+            [quantities[tickers.index(t)] for t in available], dtype=float
+        )
+    except Exception:
+        return None
+
+    current_prices = prices.iloc[-1].values
+    holdings = avail_shares * current_prices
+    total_investment = float(holdings.sum())
+
+    log_returns = np.log(prices / prices.shift(1)).dropna()
+    if len(log_returns) < 20:
+        return None
+
+    cov_matrix = log_returns.cov().values
+    corr_matrix = log_returns.corr().values
+
+    mu = log_returns.mean().values
+    sigma = log_returns.std().values
+    n = len(available)
+
+    # Cholesky decomposition for correlated draws
+    try:
+        L = np.linalg.cholesky(corr_matrix)
+    except np.linalg.LinAlgError:
+        # Fallback: use near-PD matrix
+        eigvals, eigvecs = np.linalg.eigh(corr_matrix)
+        eigvals = np.maximum(eigvals, 1e-8)
+        corr_fixed = eigvecs @ np.diag(eigvals) @ eigvecs.T
+        L = np.linalg.cholesky(corr_fixed)
+
+    rng = np.random.default_rng(42)
+    epsilon = rng.standard_normal((n, num_simulations))
+    Z = L @ epsilon
+
+    # Simulate one-day prices: S_0 * exp(mu + sigma * Z)
+    sim_prices = current_prices.reshape(-1, 1) * np.exp(
+        mu.reshape(-1, 1) + sigma.reshape(-1, 1) * Z
+    )
+
+    sim_values = avail_shares @ sim_prices
+    sim_pnl = sim_values - total_investment
+
+    var_95 = float(-np.percentile(sim_pnl, 5))
+    var_99 = float(-np.percentile(sim_pnl, 1))
+    var_995 = float(-np.percentile(sim_pnl, 0.5))
+
+    tail = sim_pnl[sim_pnl <= -var_995]
+    tvar_995 = float(-np.mean(tail)) if len(tail) > 0 else var_995
+
+    port_daily_vol = float(np.sqrt(holdings @ cov_matrix @ holdings))
+
+    return {
+        "sim_pnl": sim_pnl,
+        "sim_values": sim_values,
+        "total_investment": total_investment,
+        "var_95": var_95,
+        "var_99": var_99,
+        "var_995": var_995,
+        "tvar_995": tvar_995,
+        "port_daily_vol": port_daily_vol,
+        "available_tickers": available,
+        "skipped_tickers": [t for t in tickers if t not in available],
+    }
+
+
 def get_market_rates_data() -> Dict[str, object]:
     market_rates = {
         "last_updated": "Q4 2024 / Q1 2025",
