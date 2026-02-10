@@ -30,6 +30,7 @@ ensure_encryption_key()
 from app.database import init_db
 from app.financial_command_center.charts import (
     build_distribution_chart,
+    build_pnl_simulation_chart,
     build_stock_analysis_chart,
 )
 from app.financial_command_center.constants import get_api_keys
@@ -50,6 +51,7 @@ from app.financial_command_center.logic import (
     get_stock_data_multi_source,
     get_stock_news_multi_source,
     predict_stock_movement,
+    simulate_portfolio_pnl,
     ticker_prediction,
     intersection_of_lists,
 )
@@ -218,6 +220,48 @@ def render_dashboard():
         st.info("No positions in the account.")
     else:
         st.dataframe(positions_df, use_container_width=True)
+
+        # ── Portfolio Risk Simulation ──
+        st.divider()
+        st.subheader("Portfolio Risk Simulation")
+
+        if st.button("Run Simulation") or "sim_result" in st.session_state:
+            tickers = [p.symbol for p in data.positions]
+            quantities = [float(p.qty) for p in data.positions]
+
+            if "sim_result" not in st.session_state or st.session_state.get("sim_tickers") != tickers:
+                with st.spinner("Running 10,000 Monte Carlo scenarios..."):
+                    result = simulate_portfolio_pnl(tickers, quantities)
+                    st.session_state["sim_result"] = result
+                    st.session_state["sim_tickers"] = tickers
+
+            result = st.session_state.get("sim_result")
+
+            if result is None:
+                st.warning("Could not run simulation — not enough price history for these tickers.")
+            else:
+                fig = build_pnl_simulation_chart(
+                    result["sim_pnl"],
+                    result["var_95"],
+                    result["var_995"],
+                    result["tvar_995"],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.caption(
+                    "**What mathematics says** — using correlation between the stocks and past experience, "
+                    "we simulated 10,000 economic scenarios for your portfolio. "
+                    "Above is the distribution of the profits & losses based on these scenarios."
+                )
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Portfolio Value", f"${result['total_investment']:,.2f}")
+                m2.metric("Daily Volatility", f"${result['port_daily_vol']:,.2f}")
+                m3.metric("VaR 99.5% (1-in-200)", f"${result['var_995']:,.2f}")
+                m4.metric("TVaR 99.5%", f"${result['tvar_995']:,.2f}")
+
+                if result["skipped_tickers"]:
+                    st.warning(f"Skipped tickers (no price data): {', '.join(result['skipped_tickers'])}")
 
 
 def render_strategy():
