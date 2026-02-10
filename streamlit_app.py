@@ -85,7 +85,19 @@ def show_logo():
 
 def render_connect():
     st.header("Connect to Alpaca")
-    st.caption("Paper trading only.")
+
+    account_mode = st.radio(
+        "Account type",
+        ["Paper Trading", "Live Trading"],
+        horizontal=True,
+        help="Paper and live accounts use different API keys. Connect each separately.",
+    )
+    is_paper = account_mode == "Paper Trading"
+    mode_key = "paper" if is_paper else "live"
+    mode_label = "paper" if is_paper else "live"
+
+    if not is_paper:
+        st.warning("⚠️ You are connecting to a **live** trading account. Real money is at stake.")
 
     creds = run_async(get_credentials())
     is_connected = bool(creds and creds.is_connected)
@@ -109,12 +121,13 @@ def render_connect():
             if not api_key or not api_secret:
                 st.error("API key and secret are required.")
                 return
-            success, message = verify_connection(api_key, api_secret)
+            success, message = verify_connection(api_key, api_secret, paper=is_paper)
             if success:
                 run_async(save_credentials(api_key, api_secret))
                 run_async(update_connection_status(is_connected=True))
-                run_async(log_audit_event("connected", "Initial connection verified"))
-                st.success("Successfully connected to Alpaca paper trading.")
+                run_async(log_audit_event("connected", f"Initial {mode_label} connection verified"))
+                st.session_state["alpaca_paper"] = is_paper
+                st.success(f"Successfully connected to Alpaca {mode_label} trading.")
             else:
                 run_async(log_audit_event("connection_failed", message))
                 st.error(message)
@@ -122,7 +135,8 @@ def render_connect():
         action_col1, action_col2 = st.columns(2)
         with action_col1:
             if st.button("Verify Connection"):
-                success, message = verify_connection(creds.api_key, creds.api_secret)
+                paper_flag = st.session_state.get("alpaca_paper", True)
+                success, message = verify_connection(creds.api_key, creds.api_secret, paper=paper_flag)
                 if success:
                     run_async(update_connection_status(is_connected=True))
                     run_async(
@@ -137,6 +151,7 @@ def render_connect():
             if st.button("Disconnect"):
                 run_async(delete_credentials())
                 run_async(log_audit_event("disconnected", "Credentials deleted by user"))
+                st.session_state.pop("alpaca_paper", None)
                 st.success("Disconnected and credentials deleted.")
 
         st.divider()
@@ -151,11 +166,12 @@ def render_connect():
             if not api_key or not api_secret:
                 st.error("API key and secret are required.")
             else:
-                success, message = verify_connection(api_key, api_secret)
+                success, message = verify_connection(api_key, api_secret, paper=is_paper)
                 if success:
                     run_async(save_credentials(api_key, api_secret))
                     run_async(update_connection_status(is_connected=True))
-                    run_async(log_audit_event("connected", "Credentials updated"))
+                    run_async(log_audit_event("connected", f"Credentials updated ({mode_label})"))
+                    st.session_state["alpaca_paper"] = is_paper
                     st.success("Credentials updated.")
                 else:
                     run_async(log_audit_event("connection_failed", message))
@@ -164,7 +180,9 @@ def render_connect():
 
 def render_dashboard():
     st.header("Dashboard")
-    st.caption("Your Alpaca paper trading account overview.")
+    is_paper = st.session_state.get("alpaca_paper", True)
+    mode_label = "paper" if is_paper else "live"
+    st.caption(f"Your Alpaca **{mode_label}** trading account overview.")
 
     creds = run_async(get_credentials())
     if not creds or not creds.is_connected:
@@ -172,11 +190,11 @@ def render_dashboard():
         return
 
     if st.button("Refresh account data") or "account_data" not in st.session_state:
-        data, message = fetch_account_data(creds.api_key, creds.api_secret)
+        data, message = fetch_account_data(creds.api_key, creds.api_secret, paper=is_paper)
         if data:
             st.session_state["account_data"] = data
             st.session_state["account_message"] = None
-            run_async(log_audit_event("refreshed", f"Fetched {len(data.positions)} positions"))
+            run_async(log_audit_event("refreshed", f"Fetched {len(data.positions)} positions ({mode_label})"))
         else:
             st.session_state["account_data"] = None
             st.session_state["account_message"] = message
