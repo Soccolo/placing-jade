@@ -237,8 +237,13 @@ def render_dashboard():
 
             result = st.session_state.get("sim_result")
 
-            if result is None:
-                st.warning("Could not run simulation — not enough price history for these tickers.")
+            if result is None or "error" in result:
+                error_msg = result.get("error", "Unknown error") if result else "Simulation returned no result."
+                st.warning(f"⚠️ {error_msg}")
+                if result and result.get("diagnostics"):
+                    with st.expander("Diagnostics", expanded=False):
+                        for d in result["diagnostics"]:
+                            st.text(d)
             else:
                 fig = build_pnl_simulation_chart(
                     result["sim_pnl"],
@@ -262,6 +267,13 @@ def render_dashboard():
 
                 if result["skipped_tickers"]:
                     st.warning(f"Skipped tickers (no price data): {', '.join(result['skipped_tickers'])}")
+
+                if result.get("diagnostics"):
+                    with st.expander("Simulation diagnostics", expanded=False):
+                        st.text(f"Tickers used: {', '.join(result['available_tickers'])}")
+                        st.text(f"Trading days of history: {result['num_trading_days']}")
+                        for d in result["diagnostics"]:
+                            st.text(d)
 
 
 def render_strategy():
