@@ -1239,76 +1239,136 @@ def simulate_portfolio_pnl(
     Run a one-day Monte Carlo simulation on a portfolio using
     Cholesky-correlated GBM draws on the log-return covariance matrix.
 
-    Returns a dict with simulation results or None on failure.
+    Returns a dict with simulation results, or a dict with just an 'error'
+    key explaining what went wrong.
     """
     if not tickers or not quantities:
-        return None
+        return {"error": "No tickers or quantities provided."}
 
-    shares = np.array(quantities, dtype=float)
+    diagnostics = []
 
-    # Download aligned price history for all tickers at once
+    # ── Step 1: Download price data ──
+    # Try bulk download first, then fall back to individual downloads
+    price_series = {}
+
     try:
         raw = yf.download(tickers, start=start_date, progress=False)
-        if raw is None or raw.empty:
-            return None
+        if raw is not None and not raw.empty:
+            if isinstance(raw.columns, pd.MultiIndex):
+                close_df = raw["Close"]
+            else:
+                close_df = raw[["Close"]]
+                close_df.columns = tickers
 
-        # Handle yfinance MultiIndex columns
-        if isinstance(raw.columns, pd.MultiIndex):
-            prices = raw["Close"]
-        else:
-            prices = raw[["Close"]]
-            prices.columns = tickers
+            if isinstance(close_df, pd.Series):
+                close_df = close_df.to_frame(name=tickers[0])
 
-        # If single ticker, yf may return Series
-        if isinstance(prices, pd.Series):
-            prices = prices.to_frame(name=tickers[0])
+            for t in tickers:
+                if t in close_df.columns:
+                    col = close_df[t].dropna()
+                    if len(col) >= 10:
+                        price_series[t] = col
+                    else:
+                        diagnostics.append(f"{t}: only {len(col)} price points from bulk download")
+                else:
+                    diagnostics.append(f"{t}: not found in bulk download")
+    except Exception as e:
+        diagnostics.append(f"Bulk download failed: {str(e)[:100]}")
 
-        # Keep only requested tickers that have data
-        available = [t for t in tickers if t in prices.columns]
-        if not available:
-            return None
+    # Individual fallback for any tickers we missed
+    missing = [t for t in tickers if t not in price_series]
+    for t in missing:
+        try:
+            single = yf.download(t, start=start_date, progress=False)
+            if single is not None and not single.empty:
+                single = normalize_dataframe(single)
+                col = safe_get_column(single, "Close")
+                if col is not None:
+                    col = col.dropna()
+                    if len(col) >= 10:
+                        price_series[t] = col
+                        diagnostics.append(f"{t}: recovered via individual download ({len(col)} days)")
+                    else:
+                        diagnostics.append(f"{t}: only {len(col)} price points even individually")
+                else:
+                    diagnostics.append(f"{t}: no Close column in individual download")
+            else:
+                diagnostics.append(f"{t}: individual download returned empty")
+        except Exception as e:
+            diagnostics.append(f"{t}: individual download failed — {str(e)[:80]}")
 
-        prices = prices[available].dropna()
-        if len(prices) < 30:
-            return None
+    if not price_series:
+        return {
+            "error": "Could not download price data for any ticker. "
+                     "This may be a network issue or the tickers may not be available on Yahoo Finance.",
+            "diagnostics": diagnostics,
+        }
 
-        # Filter shares to match available tickers
-        avail_shares = np.array(
-            [quantities[tickers.index(t)] for t in available], dtype=float
-        )
-    except Exception:
-        return None
+    # ── Step 2: Align into a DataFrame ──
+    # Use forward-fill + back-fill to handle minor date gaps rather than dropping all rows
+    prices = pd.DataFrame(price_series)
+    prices = prices.sort_index().ffill().bfill().dropna()
 
-    current_prices = prices.iloc[-1].values
+    available = list(prices.columns)
+    skipped = [t for t in tickers if t not in available]
+
+    if len(prices) < 20:
+        return {
+            "error": f"Only {len(prices)} overlapping trading days across tickers (need at least 20). "
+                     f"Tickers with data: {available}. Try a more recent start date.",
+            "diagnostics": diagnostics,
+        }
+
+    if len(available) == 0:
+        return {
+            "error": "No tickers had enough price history after alignment.",
+            "diagnostics": diagnostics,
+        }
+
+    # Map back to quantities for available tickers only
+    avail_shares = np.array(
+        [quantities[tickers.index(t)] for t in available], dtype=float
+    )
+
+    current_prices = prices.iloc[-1].values.astype(float)
     holdings = avail_shares * current_prices
     total_investment = float(holdings.sum())
 
+    # ── Step 3: Log returns & covariance ──
     log_returns = np.log(prices / prices.shift(1)).dropna()
-    if len(log_returns) < 20:
-        return None
+
+    if len(log_returns) < 15:
+        return {
+            "error": f"Only {len(log_returns)} return observations — need at least 15 for a meaningful simulation.",
+            "diagnostics": diagnostics,
+        }
 
     cov_matrix = log_returns.cov().values
     corr_matrix = log_returns.corr().values
-
     mu = log_returns.mean().values
     sigma = log_returns.std().values
     n = len(available)
 
-    # Cholesky decomposition for correlated draws
+    # ── Step 4: Cholesky decomposition ──
     try:
         L = np.linalg.cholesky(corr_matrix)
     except np.linalg.LinAlgError:
-        # Fallback: use near-PD matrix
+        # Near-PD fix: clamp negative eigenvalues
         eigvals, eigvecs = np.linalg.eigh(corr_matrix)
         eigvals = np.maximum(eigvals, 1e-8)
         corr_fixed = eigvecs @ np.diag(eigvals) @ eigvecs.T
-        L = np.linalg.cholesky(corr_fixed)
+        try:
+            L = np.linalg.cholesky(corr_fixed)
+        except np.linalg.LinAlgError:
+            # Last resort: treat as uncorrelated
+            L = np.eye(n)
+            diagnostics.append("Correlation matrix not positive-definite; treating stocks as uncorrelated.")
 
+    # ── Step 5: Simulate ──
     rng = np.random.default_rng(42)
     epsilon = rng.standard_normal((n, num_simulations))
     Z = L @ epsilon
 
-    # Simulate one-day prices: S_0 * exp(mu + sigma * Z)
     sim_prices = current_prices.reshape(-1, 1) * np.exp(
         mu.reshape(-1, 1) + sigma.reshape(-1, 1) * Z
     )
@@ -1335,7 +1395,9 @@ def simulate_portfolio_pnl(
         "tvar_995": tvar_995,
         "port_daily_vol": port_daily_vol,
         "available_tickers": available,
-        "skipped_tickers": [t for t in tickers if t not in available],
+        "skipped_tickers": skipped,
+        "num_trading_days": len(log_returns),
+        "diagnostics": diagnostics,
     }
 
 
