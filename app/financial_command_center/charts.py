@@ -191,3 +191,72 @@ def build_distribution_chart(
     )
 
     return figure
+
+
+def build_pnl_simulation_chart(
+    sim_pnl,
+    var_95: float,
+    var_995: float,
+    tvar_995: float,
+) -> go.Figure:
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Histogram(
+            x=sim_pnl,
+            nbinsx=100,
+            marker_color="#0ea5e9",
+            opacity=0.75,
+            name="Simulated P&L",
+        )
+    )
+
+    figure.add_vline(
+        x=0,
+        line_width=1,
+        line_color="black",
+        opacity=0.4,
+    )
+    figure.add_vline(
+        x=-var_95,
+        line_dash="dash",
+        line_color="#f59e0b",
+        line_width=2,
+        annotation_text=f"VaR 95%: -${var_95:,.0f}",
+        annotation_position="top left",
+    )
+    figure.add_vline(
+        x=-var_995,
+        line_dash="dash",
+        line_color="#ef4444",
+        line_width=2,
+        annotation_text=f"VaR 99.5%: -${var_995:,.0f}",
+        annotation_position="top left",
+    )
+    figure.add_vline(
+        x=-tvar_995,
+        line_dash="dot",
+        line_color="#991b1b",
+        line_width=2,
+        annotation_text=f"TVaR 99.5%: -${tvar_995:,.0f}",
+        annotation_position="top left",
+    )
+    figure.add_vline(
+        x=float(sim_pnl.mean()),
+        line_dash="dash",
+        line_color="#22c55e",
+        line_width=2,
+        annotation_text=f"Mean: ${float(sim_pnl.mean()):+,.0f}",
+        annotation_position="top right",
+    )
+
+    figure.update_layout(
+        xaxis_title="P&L ($)",
+        yaxis_title="Frequency",
+        template="plotly_white",
+        height=420,
+        margin=dict(l=20, r=20, t=30, b=20),
+        showlegend=False,
+    )
+
+    return figure
