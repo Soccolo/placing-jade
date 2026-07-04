@@ -31,6 +31,7 @@ from app.database import init_db
 from app.financial_command_center.charts import (
     build_distribution_chart,
     build_pnl_simulation_chart,
+    build_risk_contribution_chart,
     build_stock_analysis_chart,
 )
 from app.financial_command_center.constants import get_api_keys
@@ -282,6 +283,99 @@ def render_dashboard():
                 m2.metric("Daily Volatility", f"${result['port_daily_vol']:,.2f}")
                 m3.metric("VaR 99.5% (1-in-200)", f"${result['var_995']:,.2f}")
                 m4.metric("TVaR 99.5%", f"${result['tvar_995']:,.2f}")
+
+                # ── Largest contributors to risk ──
+                contributions = result.get("risk_contributions") or []
+                if contributions:
+                    st.divider()
+                    st.subheader("Largest Contributors to Risk")
+                    st.caption(
+                        "**How we attribute risk** — using Euler's theorem on the "
+                        "covariance matrix (for daily volatility) and conditional "
+                        "expectation on the simulated tail scenarios (for VaR & TVaR), "
+                        "we decompose total portfolio risk into the share coming from "
+                        "each position. Contributions sum to the headline figure, so "
+                        "the largest bars are literally the biggest drivers of your "
+                        "downside."
+                    )
+
+                    metric_options = {
+                        "VaR 99.5%": ("component_var_995", "var_995"),
+                        "VaR 99%": ("component_var_99", "var_99"),
+                        "VaR 95%": ("component_var_95", "var_95"),
+                        "TVaR 99.5%": ("component_tvar_995", "tvar_995"),
+                        "Daily Volatility": ("component_vol", "port_daily_vol"),
+                    }
+                    selected_label = st.selectbox(
+                        "Risk measure to decompose",
+                        list(metric_options.keys()),
+                        index=0,
+                    )
+                    metric_key, total_key = metric_options[selected_label]
+
+                    chart_fig = build_risk_contribution_chart(
+                        contributions,
+                        metric=metric_key,
+                        title=f"Contribution to {selected_label}",
+                    )
+                    st.plotly_chart(chart_fig, use_container_width=True)
+
+                    total_value = result.get(total_key, 0.0)
+                    top = sorted(
+                        contributions, key=lambda r: r[metric_key], reverse=True
+                    )[:3]
+                    if total_value and top:
+                        top_sum = sum(r[metric_key] for r in top)
+                        top_pct = top_sum / total_value * 100 if total_value else 0.0
+                        top_str = ", ".join(
+                            f"{r['ticker']} (${r[metric_key]:,.0f}, "
+                            f"{r[metric_key] / total_value * 100:.1f}%)"
+                            for r in top
+                        )
+                        st.info(
+                            f"**Top 3 contributors to {selected_label}:** {top_str}. "
+                            f"Together they explain {top_pct:.1f}% of total "
+                            f"{selected_label.lower()} (${total_value:,.0f})."
+                        )
+
+                    contrib_df = pd.DataFrame(contributions)
+                    if not contrib_df.empty:
+                        display_df = pd.DataFrame(
+                            {
+                                "Ticker": contrib_df["ticker"],
+                                "Position ($)": contrib_df["position_value"].map(
+                                    lambda v: f"${v:,.0f}"
+                                ),
+                                "Weight": contrib_df["weight"].map(
+                                    lambda v: f"{v * 100:.1f}%"
+                                ),
+                                "Component Vol ($)": contrib_df["component_vol"].map(
+                                    lambda v: f"${v:,.0f}"
+                                ),
+                                "Vol Share": contrib_df["component_vol_pct"].map(
+                                    lambda v: f"{v * 100:.1f}%"
+                                ),
+                                "Component VaR 99.5% ($)": contrib_df[
+                                    "component_var_995"
+                                ].map(lambda v: f"${v:,.0f}"),
+                                "VaR 99.5% Share": contrib_df[
+                                    "component_var_995_pct"
+                                ].map(lambda v: f"{v * 100:.1f}%"),
+                                "Component TVaR 99.5% ($)": contrib_df[
+                                    "component_tvar_995"
+                                ].map(lambda v: f"${v:,.0f}"),
+                            }
+                        )
+                        with st.expander("Full per-position breakdown", expanded=False):
+                            st.dataframe(display_df, use_container_width=True, hide_index=True)
+                            st.caption(
+                                "**Component Vol** comes from Euler decomposition on "
+                                "the covariance matrix; columns sum exactly to the "
+                                "headline volatility. **Component VaR / TVaR** come "
+                                "from conditional expectation on the simulated tail "
+                                "scenarios and sum approximately to the headline VaR "
+                                "/ TVaR (small Monte Carlo noise on the band estimate)."
+                            )
 
                 if result["skipped_tickers"]:
                     st.warning(f"Skipped tickers (no price data): {', '.join(result['skipped_tickers'])}")
