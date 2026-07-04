@@ -260,3 +260,67 @@ def build_pnl_simulation_chart(
     )
 
     return figure
+
+
+def build_risk_contribution_chart(
+    risk_contributions: list,
+    metric: str = "component_var_995",
+    title: str = "Contribution to VaR 99.5%",
+) -> go.Figure:
+    """
+    Horizontal bar chart showing each position's contribution to a risk
+    metric (component volatility, component VaR, or component TVaR).
+
+    `risk_contributions` is the list of per-asset dicts returned by
+    `simulate_portfolio_pnl`. `metric` picks which column to plot — e.g.
+    `component_vol`, `component_var_95`, `component_var_99`,
+    `component_var_995`, `component_tvar_995`.
+    """
+    if not risk_contributions:
+        return go.Figure()
+
+    sorted_rows = sorted(
+        risk_contributions, key=lambda row: row.get(metric, 0.0), reverse=False
+    )  # ascending so the largest bar lands at the top of the chart
+
+    tickers = [row["ticker"] for row in sorted_rows]
+    values = [row.get(metric, 0.0) for row in sorted_rows]
+    pct_key = f"{metric}_pct"
+    pcts = [row.get(pct_key, 0.0) for row in sorted_rows]
+    weights = [row.get("weight", 0.0) for row in sorted_rows]
+
+    # Color bars by sign so we can see hedging / diversification benefits
+    # (negative contributions reduce total portfolio risk).
+    colors = ["#ef4444" if v >= 0 else "#22c55e" for v in values]
+
+    hover_text = [
+        f"<b>{tk}</b><br>"
+        f"Contribution: ${v:,.0f} ({p * 100:.1f}% of total)<br>"
+        f"Position weight: {w * 100:.1f}%"
+        for tk, v, p, w in zip(tickers, values, pcts, weights)
+    ]
+
+    figure = go.Figure(
+        go.Bar(
+            x=values,
+            y=tickers,
+            orientation="h",
+            marker_color=colors,
+            text=[f"${v:,.0f}" for v in values],
+            textposition="auto",
+            hovertext=hover_text,
+            hoverinfo="text",
+        )
+    )
+
+    figure.update_layout(
+        title=title,
+        xaxis_title="Contribution ($)",
+        yaxis_title="",
+        template="plotly_white",
+        height=max(280, 40 * len(tickers) + 120),
+        margin=dict(l=20, r=20, t=50, b=20),
+        showlegend=False,
+    )
+
+    return figure

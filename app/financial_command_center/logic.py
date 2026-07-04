@@ -1239,8 +1239,14 @@ def simulate_portfolio_pnl(
     Run a one-day Monte Carlo simulation on a portfolio using
     Cholesky-correlated GBM draws on the log-return covariance matrix.
 
-    Returns a dict with simulation results, or a dict with just an 'error'
-    key explaining what went wrong.
+    Returns a dict with simulation results — VaR/TVaR figures, the full
+    P&L distribution, and a per-asset `risk_contributions` table that
+    decomposes both daily volatility (Euler decomposition on the
+    covariance matrix) and VaR/TVaR (conditional expectation on the
+    simulated scenarios) into contributions from each position.
+
+    Returns a dict with just an 'error' key explaining what went wrong
+    if the simulation cannot be run.
     """
     if not tickers or not quantities:
         return {"error": "No tickers or quantities provided."}
@@ -1376,6 +1382,13 @@ def simulate_portfolio_pnl(
     sim_values = avail_shares @ sim_prices
     sim_pnl = sim_values - total_investment
 
+    # Per-asset simulated P&L (shape: n × num_simulations).
+    # By construction per_asset_pnl.sum(axis=0) == sim_pnl, so any
+    # decomposition we build from it is internally consistent.
+    per_asset_pnl = avail_shares.reshape(-1, 1) * (
+        sim_prices - current_prices.reshape(-1, 1)
+    )
+
     var_95 = float(-np.percentile(sim_pnl, 5))
     var_99 = float(-np.percentile(sim_pnl, 1))
     var_995 = float(-np.percentile(sim_pnl, 0.5))
@@ -1384,6 +1397,90 @@ def simulate_portfolio_pnl(
     tvar_995 = float(-np.mean(tail)) if len(tail) > 0 else var_995
 
     port_daily_vol = float(np.sqrt(holdings @ cov_matrix @ holdings))
+
+    # ── Step 6: Risk attribution ──
+    # Two decompositions, each using a different (rigorous) definition of
+    # "contribution":
+    #
+    #   (a) Component volatility via Euler decomposition on the covariance
+    #       matrix. Sums to port_daily_vol exactly.
+    #         CV_i = w_i * (Σ w)_i / σ_p
+    #
+    #   (b) Component VaR / TVaR via conditional expectation on the
+    #       simulated scenarios. For VaR we average per-asset P&L in a
+    #       narrow band around the VaR quantile; for TVaR we average
+    #       across the full tail beyond VaR_99.5%.
+    #         C_VaR_i = -E[ pnl_i | portfolio P&L ≈ -VaR_α ]
+    #         C_TVaR_i = -E[ pnl_i | portfolio P&L ≤ -VaR_α ]
+    #       By Euler's theorem these sum (approximately) to VaR_α / TVaR_α.
+
+    # (a) Euler decomposition of daily volatility
+    cov_holdings = cov_matrix @ holdings  # shape (n,)
+    if port_daily_vol > 0:
+        component_vol = holdings * cov_holdings / port_daily_vol
+        marginal_vol = cov_holdings / port_daily_vol
+    else:
+        component_vol = np.zeros(n)
+        marginal_vol = np.zeros(n)
+
+    # (b) Conditional-expectation component VaR using a narrow band around
+    #     the quantile. The band collects scenarios within ±0.5% of the VaR
+    #     percentile, falling back to the tail mean if too few samples land
+    #     inside the band (rare with 10k sims but possible for tight tails).
+    def _component_var_band(confidence: float, band_width: float = 0.005) -> np.ndarray:
+        alpha = 1.0 - confidence
+        lower_pct = max(0.0, (alpha - band_width) * 100.0)
+        upper_pct = min(100.0, (alpha + band_width) * 100.0)
+        lo = np.percentile(sim_pnl, lower_pct)
+        hi = np.percentile(sim_pnl, upper_pct)
+        band_mask = (sim_pnl >= lo) & (sim_pnl <= hi)
+        if band_mask.sum() < 5:
+            tail_mask = sim_pnl <= np.percentile(sim_pnl, alpha * 100.0)
+            if tail_mask.sum() == 0:
+                return np.zeros(n)
+            return -per_asset_pnl[:, tail_mask].mean(axis=1)
+        return -per_asset_pnl[:, band_mask].mean(axis=1)
+
+    comp_var_95 = _component_var_band(0.95)
+    comp_var_99 = _component_var_band(0.99)
+    comp_var_995 = _component_var_band(0.995)
+
+    # Component TVaR 99.5% = mean per-asset P&L over the full 99.5% tail
+    tail_mask_995 = sim_pnl <= -var_995
+    if tail_mask_995.sum() > 0:
+        comp_tvar_995 = -per_asset_pnl[:, tail_mask_995].mean(axis=1)
+    else:
+        comp_tvar_995 = comp_var_995.copy()
+
+    # Assemble a per-asset table. Sorted by largest contribution to VaR 99.5%
+    # so the worst offenders surface first.
+    def _safe_pct(numerator: float, denominator: float) -> float:
+        return float(numerator / denominator) if denominator not in (0.0, 0) else 0.0
+
+    risk_contributions: List[Dict[str, object]] = []
+    for i, ticker in enumerate(available):
+        position_value = float(holdings[i])
+        weight = _safe_pct(position_value, total_investment)
+        risk_contributions.append(
+            {
+                "ticker": ticker,
+                "position_value": position_value,
+                "weight": weight,
+                "marginal_vol": float(marginal_vol[i]),
+                "component_vol": float(component_vol[i]),
+                "component_vol_pct": _safe_pct(float(component_vol[i]), port_daily_vol),
+                "component_var_95": float(comp_var_95[i]),
+                "component_var_95_pct": _safe_pct(float(comp_var_95[i]), var_95),
+                "component_var_99": float(comp_var_99[i]),
+                "component_var_99_pct": _safe_pct(float(comp_var_99[i]), var_99),
+                "component_var_995": float(comp_var_995[i]),
+                "component_var_995_pct": _safe_pct(float(comp_var_995[i]), var_995),
+                "component_tvar_995": float(comp_tvar_995[i]),
+                "component_tvar_995_pct": _safe_pct(float(comp_tvar_995[i]), tvar_995),
+            }
+        )
+
+    risk_contributions.sort(key=lambda row: row["component_var_995"], reverse=True)
 
     return {
         "sim_pnl": sim_pnl,
@@ -1398,6 +1495,7 @@ def simulate_portfolio_pnl(
         "skipped_tickers": skipped,
         "num_trading_days": len(log_returns),
         "diagnostics": diagnostics,
+        "risk_contributions": risk_contributions,
     }
 
 
