@@ -9,7 +9,7 @@ streamlit>=1.52
 jinja2==3.1.6
 
 # Database
-sqlalchemy>=2.0.36
+sqlalchemy[asyncio]>=2.0.36
 aiosqlite>=0.20.0
 
 # Encryption for credentials
@@ -31,7 +31,7 @@ httpx==0.26.0
 
 # Financial Command Center
 yfinance>=0.2.31
-numpy>=1.24.0,<2
+numpy>=1.24.0
 pandas>=2.0.0
 scipy>=1.11.0
 plotly>=5.17.0
