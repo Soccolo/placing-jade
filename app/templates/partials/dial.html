@@ -1,0 +1,14 @@
+{% macro dial(value, label, caption="", colour="var(--color-primary)") %}
+<div class="dial">
+    <svg viewBox="0 0 84 84" width="96" height="96" role="img" aria-label="{{ label }}: {{ "%.0f%%" % value if value is not none else "not calculated" }}">
+        <circle cx="42" cy="42" r="30" fill="none" stroke="var(--color-border)" stroke-width="7"/>
+        {% if value is not none %}
+        <circle cx="42" cy="42" r="30" fill="none" stroke="{{ colour }}" stroke-width="7" stroke-linecap="round"
+                stroke-dasharray="{{ "%.1f" % (188.5 * ([value, 100] | min) / 100) }} 188.5" transform="rotate(-90 42 42)"/>
+        {% endif %}
+        <text x="42" y="47" text-anchor="middle" font-size="16" fill="var(--color-text)">{{ "%.0f%%" % value if value is not none else "–" }}</text>
+    </svg>
+    <div class="dial-label">{{ label }}</div>
+    {% if caption %}<div class="dial-caption">{{ caption }}</div>{% endif %}
+</div>
+{% endmacro %}
