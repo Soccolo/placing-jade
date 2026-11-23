@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Notrix{% endblock %}
+{% block title %}Dashboard - Placing Jade{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -97,6 +97,83 @@
     <p class="empty-state">No positions in your account.</p>
     {% endif %}
 </div>
+
+{% if positions %}
+<div class="card" id="risk">
+    <div class="card-header">
+        <h2>Portfolio Risk Simulation</h2>
+        <a href="/dashboard?simulate=1#risk" class="btn btn-secondary btn-small">{% if risk %}Run again{% else %}Run simulation{% endif %}</a>
+    </div>
+
+    {% if not risk %}
+    <p class="text-muted">Simulates 10,000 one-day scenarios for these positions, using how the stocks have moved and moved together since 2022. Takes a few seconds.</p>
+    {% elif risk.error %}
+    <div class="alert alert-error">
+        {{ risk.error }}
+        {% for line in risk.diagnostics %}<p class="text-muted">{{ line }}</p>{% endfor %}
+    </div>
+    {% else %}
+    <div class="chart-container">{{ risk.pnl_chart | safe }}</div>
+    <p class="text-muted">Distribution of one-day profit and loss across 10,000 simulated scenarios, based on {{ risk.num_trading_days }} trading days of history.</p>
+
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">Portfolio value</div>
+            <div class="metric-value">${{ "{:,.0f}".format(risk.total_investment) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Daily volatility</div>
+            <div class="metric-value">${{ "{:,.0f}".format(risk.port_daily_vol) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">VaR 99.5% (1 day in 200)</div>
+            <div class="metric-value">${{ "{:,.0f}".format(risk.var_995) }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">TVaR 99.5%</div>
+            <div class="metric-value">${{ "{:,.0f}".format(risk.tvar_995) }}</div>
+            <div class="metric-source">Average loss on the days worse than the VaR.</div>
+        </div>
+    </div>
+
+    <h3>Largest contributors to risk</h3>
+    <div class="chart-container">{{ risk.contribution_chart | safe }}</div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th class="text-right">Position</th>
+                    <th class="text-right">Weight</th>
+                    <th class="text-right">Volatility share</th>
+                    <th class="text-right">VaR 99.5%</th>
+                    <th class="text-right">VaR share</th>
+                    <th class="text-right">TVaR 99.5%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in risk.risk_contributions %}
+                <tr>
+                    <td class="symbol">{{ row.ticker }}</td>
+                    <td class="text-right">${{ "{:,.0f}".format(row.position_value) }}</td>
+                    <td class="text-right">{{ "{:.1f}".format(row.weight * 100) }}%</td>
+                    <td class="text-right">{{ "{:.1f}".format(row.component_vol_pct * 100) }}%</td>
+                    <td class="text-right">${{ "{:,.0f}".format(row.component_var_995) }}</td>
+                    <td class="text-right">{{ "{:.1f}".format(row.component_var_995_pct * 100) }}%</td>
+                    <td class="text-right">${{ "{:,.0f}".format(row.component_tvar_995) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted">Each position's share of total risk. Shares add up to the headline figure, so the largest rows are the biggest drivers of your downside.</p>
+
+    {% if risk.skipped_tickers %}
+    <div class="alert">No price data for {{ risk.skipped_tickers | join(', ') }}. Left out of the simulation.</div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endif %}
 {% elif not error %}
 <div class="card">
     <p class="empty-state">

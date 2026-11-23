@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="Notrix",
+    title="Placing Jade Terminal",
     description="A bridge between portfolio recipes and brokerage accounts",
     version="1.0.0",
     lifespan=lifespan

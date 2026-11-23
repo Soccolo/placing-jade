@@ -3,21 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Notrix{% endblock %}</title>
+    <title>{% block title %}Placing Jade Terminal{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <header>
         <nav>
             <div class="logo">
-                <img src="/static/notrix_logo.png" alt="Notrix logo">
-                <span>Notrix</span>
+                <img src="/static/placing_jade_logo.png" alt="">
+                <span>Placing Jade</span>
             </div>
             <ul class="nav-links">
-                <li><a href="/dashboard">Dashboard</a></li>
-                <li><a href="/strategy">Strategy</a></li>
-                <li><a href="/connect">Connect</a></li>
-                <li><a href="/command-center/market-ticker">Command Center</a></li>
+                {% for href, section, label in [
+                    ("/dashboard", "/dashboard", "Dashboard"),
+                    ("/strategy", "/strategy", "Strategy"),
+                    ("/connect", "/connect", "Connect"),
+                    ("/command-center/market-ticker", "/command-center", "Command Center"),
+                ] %}
+                <li><a href="{{ href }}" {% if request.url.path.startswith(section) %}aria-current="page"{% endif %}>{{ label }}</a></li>
+                {% endfor %}
             </ul>
         </nav>
     </header>
@@ -27,7 +31,7 @@
     </main>
     
     <footer>
-        <p>Notrix &mdash; Paper Trading Only</p>
+        <p>Placing Jade Terminal &mdash; Paper Trading Only</p>
     </footer>
 </body>
 </html>

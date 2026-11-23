@@ -3,10 +3,8 @@ from __future__ import annotations
 import json
 from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 import plotly.io as plotly_io
-import yfinance as yf
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -25,10 +23,8 @@ from app.financial_command_center.logic import (
     analyze_sentiment,
     calculate_bollinger_bands,
     calculate_macd,
-    calculate_percentile,
-    calculate_probability_below,
     calculate_rsi,
-    convolve_pdfs,
+    common_expirations,
     get_economic_news,
     get_fundamental_data,
     get_insurance_company_data,
@@ -38,8 +34,8 @@ from app.financial_command_center.logic import (
     get_stock_data_multi_source,
     get_stock_news_multi_source,
     predict_stock_movement,
-    ticker_prediction,
-    intersection_of_lists,
+    options_implied_values,
+    summarise_distribution,
 )
 
 router = APIRouter()
@@ -77,7 +73,7 @@ def market_ticker(request: Request, debug: Optional[bool] = False):
             "debug_enabled": bool(debug),
         }
     )
-    return templates.TemplateResponse("fcc/market_ticker.html", context)
+    return templates.TemplateResponse(request, "fcc/market_ticker.html", context)
 
 
 @router.get("/command-center/stock-research")
@@ -158,7 +154,7 @@ def stock_research(
             "info": info or {},
         }
     )
-    return templates.TemplateResponse("fcc/stock_research.html", context)
+    return templates.TemplateResponse(request, "fcc/stock_research.html", context)
 
 
 @router.get("/command-center/portfolio-calculator")
@@ -167,36 +163,32 @@ def portfolio_calculator(request: Request):
     context.update(
         {
             "portfolio_text": "",
-            "input_method": "manual",
             "risk_free_rate": 0.04,
             "min_volume": 20,
             "max_spread_ratio": 0.2,
             "free_capital": 100.0,
             "var_confidence": 95,
             "show_percentiles": [5, 25, 50, 75, 95],
-            "show_unleveraged": True,
             "results": None,
             "errors": [],
             "expirations": [],
             "selected_expiration": "",
         }
     )
-    return templates.TemplateResponse("fcc/portfolio_calculator.html", context)
+    return templates.TemplateResponse(request, "fcc/portfolio_calculator.html", context)
 
 
 @router.post("/command-center/portfolio-calculator")
 async def portfolio_calculator_run(
     request: Request,
-    input_method: str = Form("manual"),
     portfolio_text: str = Form(""),
     uploaded_file: UploadFile = File(None),
     risk_free_rate: float = Form(0.04),
     min_volume: int = Form(20),
     max_spread_ratio: float = Form(0.2),
-    free_capital: float = Form(100.0),
+    free_capital: float = Form(100.0, ge=0),
     var_confidence: int = Form(95),
     show_percentiles: Optional[List[int]] = Form(default=None),
-    show_unleveraged: Optional[bool] = Form(False),
     selected_expiration: str = Form(""),
     portfolio_payload: str = Form(""),
 ):
@@ -223,152 +215,58 @@ async def portfolio_calculator_run(
             dataframe = None
 
     if dataframe is None:
-        if input_method == "upload":
+        if has_upload:
             dataframe = load_portfolio_from_upload(uploaded_file)
             if dataframe is None:
-                errors.append("Uploaded file must include Stocks and Value columns.")
+                errors.append("The uploaded file must include Stocks and Value columns.")
         else:
             dataframe = parse_portfolio_text(portfolio_text)
             if dataframe is None:
-                errors.append("Enter portfolio rows as TICKER,VALUE,UNLEVERAGED.")
+                errors.append("Enter one position per line as TICKER, POSITION, YOUR CAPITAL.")
 
     dataframe = normalize_portfolio_dataframe(dataframe)
+    if dataframe is None and not errors:
+        errors.append("No valid portfolio rows found.")
 
     expirations: List[str] = []
+    notices: List[str] = []
     if dataframe is not None and errors == []:
-        tickers = dataframe["Stocks"].tolist()
-        expiration_lists = []
-        for ticker_symbol in tickers:
-            try:
-                ticker_data = yf.Ticker(ticker_symbol)
-                expiration_lists.append(ticker_data.options)
-            except Exception:
-                expiration_lists.append([])
-        expirations = sorted(intersection_of_lists(expiration_lists))
-        if expirations and (pd.to_datetime(expirations[0]) - pd.Timestamp.today()).days <= 0:
-            expirations = expirations[1:]
-
+        expirations, no_options = common_expirations(dataframe["Stocks"].tolist())
+        if no_options:
+            notices.append(f"No listed options found for {', '.join(no_options)}. Left out of the analysis.")
+            dataframe = dataframe[~dataframe["Stocks"].isin(no_options)]
         if not expirations:
-            errors.append("No valid option expiration dates found for tickers.")
+            errors.append("These tickers share no option expiry date.")
 
     results = None
     distribution_chart = None
 
-    if dataframe is not None and errors == [] and selected_expiration:
-        tickers = dataframe["Stocks"].tolist()
+    if dataframe is not None and errors == [] and selected_expiration in expirations:
         try:
-            expiration_index = expirations.index(selected_expiration)
-        except ValueError:
-            expiration_index = 0
-
-        investment_grid_list = []
-        pdf_smooth_list = []
-        failed_tickers = []
-
-        for ticker_index, ticker_symbol in enumerate(tickers):
-            try:
-                investment_grid, pdf_smooth = ticker_prediction(
-                    ticker_index,
-                    dataframe,
-                    expirations,
-                    expiration_index,
-                    risk_free_rate,
-                    min_volume,
-                    max_spread_ratio,
+            outcome = options_implied_values(
+                dataframe, selected_expiration, risk_free_rate, min_volume, max_spread_ratio
+            )
+        except Exception as error:
+            outcome = None
+            errors.append(f"Could not calculate: {str(error)[:120]}")
+        if outcome is not None:
+            if outcome["skipped"]:
+                reasons = "; ".join(f"{ticker} ({why})" for ticker, why in outcome["skipped"].items())
+                notices.append(f"Left out of every figure below: {reasons}.")
+            if outcome["positions"] is None:
+                errors.append(
+                    "No position could be analysed. Option quotes are often empty outside US market hours; "
+                    "otherwise loosen the liquidity filters."
                 )
-                if investment_grid is not None:
-                    investment_grid_list.append(investment_grid)
-                    pdf_smooth_list.append(pdf_smooth)
-                else:
-                    failed_tickers.append(ticker_symbol)
-            except Exception:
-                failed_tickers.append(ticker_symbol)
-
-        if not investment_grid_list:
-            errors.append("Could not process any tickers successfully.")
-        else:
-            if len(investment_grid_list) == 1:
-                investment_values = np.array(investment_grid_list[0]) + free_capital
-                pdf_values = np.array(pdf_smooth_list[0])
             else:
-                investment_values, pdf_values = convolve_pdfs(
-                    investment_grid_list, pdf_smooth_list
+                stats = summarise_distribution(outcome, free_capital, var_confidence, percentiles)
+                figure = build_distribution_chart(
+                    stats["values"], stats["today"], stats["var_value"], var_confidence, stats["capital"]
                 )
-                investment_values = investment_values + free_capital
-
-            expected_value = float(
-                np.trapz(investment_values * pdf_values, investment_values)
-            )
-            current_value_leveraged = float(dataframe["Value"].sum() + free_capital)
-            unleveraged_capital = float(
-                dataframe["Unleveraged Value"].sum() + free_capital
-            )
-            expected_gain = expected_value - current_value_leveraged
-            expected_return_leveraged = (
-                expected_gain / current_value_leveraged * 100
-                if current_value_leveraged > 0
-                else 0
-            )
-            expected_return_unleveraged = (
-                expected_gain / unleveraged_capital * 100 if unleveraged_capital > 0 else 0
-            )
-            leverage_ratio = (
-                current_value_leveraged / unleveraged_capital
-                if unleveraged_capital > 0
-                else 1
-            )
-
-            var_percentile = 100 - var_confidence
-            var_value = calculate_percentile(
-                investment_values, pdf_values, var_percentile
-            )
-            var_loss = current_value_leveraged - var_value
-            var_loss_pct_leveraged = (
-                var_loss / current_value_leveraged * 100
-                if current_value_leveraged > 0
-                else 0
-            )
-            var_loss_pct_unleveraged = (
-                var_loss / unleveraged_capital * 100 if unleveraged_capital > 0 else 0
-            )
-
-            percentile_values = {
-                percentile: calculate_percentile(investment_values, pdf_values, percentile)
-                for percentile in percentiles
-            }
-
-            prob_loss = calculate_probability_below(
-                investment_values, pdf_values, current_value_leveraged
-            )
-            prob_profit = 1 - prob_loss
-
-            figure = build_distribution_chart(
-                investment_values,
-                pdf_values,
-                current_value_leveraged,
-                expected_value,
-                var_value,
-                var_confidence,
-            )
-            distribution_chart = plotly_io.to_html(
-                figure, full_html=False, include_plotlyjs="cdn"
-            )
-
-            results = {
-                "expected_value": expected_value,
-                "current_value": current_value_leveraged,
-                "expected_return_leveraged": expected_return_leveraged,
-                "expected_return_unleveraged": expected_return_unleveraged,
-                "leverage_ratio": leverage_ratio,
-                "var_value": var_value,
-                "var_loss": var_loss,
-                "var_loss_pct_leveraged": var_loss_pct_leveraged,
-                "var_loss_pct_unleveraged": var_loss_pct_unleveraged,
-                "prob_profit": prob_profit,
-                "prob_loss": prob_loss,
-                "percentiles": percentile_values,
-                "failed_tickers": failed_tickers,
-            }
+                distribution_chart = plotly_io.to_html(figure, full_html=False, include_plotlyjs="cdn")
+                # The raw samples stay out of the template context.
+                results = {key: value for key, value in stats.items() if key != "values"}
+                results["expiry"] = selected_expiration
 
     portfolio_payload_value = (
         dataframe.to_dict(orient="records") if dataframe is not None else []
@@ -376,7 +274,6 @@ async def portfolio_calculator_run(
 
     context.update(
         {
-            "input_method": input_method,
             "portfolio_text": portfolio_text,
             "risk_free_rate": risk_free_rate,
             "min_volume": min_volume,
@@ -384,7 +281,7 @@ async def portfolio_calculator_run(
             "free_capital": free_capital,
             "var_confidence": var_confidence,
             "show_percentiles": percentiles,
-            "show_unleveraged": bool(show_unleveraged),
+            "notices": notices,
             "selected_expiration": selected_expiration,
             "expirations": expirations,
             "portfolio_payload": json.dumps(portfolio_payload_value),
@@ -393,7 +290,7 @@ async def portfolio_calculator_run(
             "errors": errors,
         }
     )
-    return templates.TemplateResponse("fcc/portfolio_calculator.html", context)
+    return templates.TemplateResponse(request, "fcc/portfolio_calculator.html", context)
 
 
 @router.get("/command-center/economic-news")
@@ -401,7 +298,7 @@ def economic_news(request: Request):
     context = build_fcc_context(request, active_tab="economic-news")
     news_items = get_economic_news()
     context.update({"news_items": news_items})
-    return templates.TemplateResponse("fcc/economic_news.html", context)
+    return templates.TemplateResponse(request, "fcc/economic_news.html", context)
 
 
 @router.get("/command-center/insurance-news")
@@ -434,7 +331,7 @@ def insurance_news(request: Request):
         news_items.append(validated_item)
     
     context.update({"news_items": news_items})
-    return templates.TemplateResponse("fcc/insurance_news.html", context)
+    return templates.TemplateResponse(request, "fcc/insurance_news.html", context)
 
 
 @router.get("/command-center/insurance-tracker")
@@ -448,4 +345,4 @@ def insurance_tracker(request: Request):
             "company_data": company_data,
         }
     )
-    return templates.TemplateResponse("fcc/insurance_tracker.html", context)
+    return templates.TemplateResponse(request, "fcc/insurance_tracker.html", context)

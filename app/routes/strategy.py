@@ -3,6 +3,8 @@ Strategy Route
 
 Displays the target portfolio loaded from CSV.
 """
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
@@ -13,8 +15,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 def render_strategy(request: Request, result, message: str | None = None):
-    return templates.TemplateResponse(
-        "strategy.html",
+    return templates.TemplateResponse(request, "strategy.html",
         {
             "request": request,
             "portfolio": result.entries,
@@ -22,7 +23,7 @@ def render_strategy(request: Request, result, message: str | None = None):
             "errors": result.errors,
             "warnings": result.warnings,
             "total_weight": result.total_weight,
-            "file_path": TARGET_PORTFOLIO_PATH,
+            "file_path": Path(TARGET_PORTFOLIO_PATH).name,
             "message": message,
         },
     )
