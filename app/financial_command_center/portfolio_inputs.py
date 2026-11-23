@@ -67,11 +67,15 @@ def load_portfolio_from_upload(uploaded_file: UploadFile) -> Optional[pd.DataFra
 
 
 def normalize_portfolio_dataframe(dataframe: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
-    if dataframe is None or dataframe.empty:
+    """Valid rows only, one row per ticker; a missing own-capital figure means no leverage."""
+    if dataframe is None or not {"Stocks", "Value"} <= set(dataframe.columns):
         return None
-    if "Unleveraged Value" not in dataframe.columns:
-        dataframe["Unleveraged Value"] = dataframe["Value"]
-    dataframe["Unleveraged Value"] = dataframe["Unleveraged Value"].fillna(
-        dataframe["Value"]
-    )
-    return dataframe.reset_index(drop=True)
+    columns = ["Stocks", "Value", "Unleveraged Value"]
+    dataframe = dataframe.reindex(columns=columns)
+    dataframe["Stocks"] = dataframe["Stocks"].astype("string").str.strip().str.upper()
+    dataframe[columns[1:]] = dataframe[columns[1:]].apply(pd.to_numeric, errors="coerce")
+    dataframe = dataframe[dataframe["Stocks"].notna() & (dataframe["Stocks"] != "") & (dataframe["Value"] > 0)].copy()
+    own_capital = dataframe["Unleveraged Value"]
+    dataframe["Unleveraged Value"] = own_capital.where(own_capital > 0, dataframe["Value"])
+    dataframe = dataframe.groupby("Stocks", as_index=False, sort=False)[columns[1:]].sum()
+    return None if dataframe.empty else dataframe

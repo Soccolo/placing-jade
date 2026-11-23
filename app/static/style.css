@@ -712,3 +712,42 @@ footer {
         gap: 12px;
     }
 }
+
+/* Current page in the top navigation */
+.nav-links a[aria-current="page"] {
+    color: #e0f2fe;
+    background-color: rgba(59, 130, 246, 0.15);
+}
+
+.logo img {
+    border-radius: 6px;
+}
+
+/* Inline toolbar forms get the same dark controls as full forms */
+.form-group-inline input,
+.form-group-inline select {
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    font-family: inherit;
+    background-color: var(--color-surface-2);
+    color: var(--color-text);
+}
+
+/* Checkboxes inside a form group keep their natural size and sit in a row */
+.form-group input[type="checkbox"] {
+    width: auto;
+}
+
+.form-group .checkbox {
+    display: flex;
+    margin-bottom: 0;
+    font-weight: 400;
+}
+
+.check-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+}

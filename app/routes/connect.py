@@ -27,8 +27,7 @@ def render_connect(
     message: str | None = None,
     error: str | None = None,
 ):
-    return templates.TemplateResponse(
-        "connect.html",
+    return templates.TemplateResponse(request, "connect.html",
         {
             "request": request,
             "is_connected": is_connected,

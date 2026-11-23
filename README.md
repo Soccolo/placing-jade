@@ -21,7 +21,7 @@ Notrix does NOT:
 Notrix now includes a Financial Command Center with dedicated tabs for:
 - Live Market Ticker
 - Stock Research & Analysis (charts, indicators, predictions, news & sentiment)
-- Portfolio Calculator (Daily Profitability Calculator)
+- Portfolio Calculator (options-implied distribution of portfolio value, VaR and chance of profit)
 - Economic News
 - Insurance News
 - Insurance Industry Tracker

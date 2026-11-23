@@ -9,11 +9,9 @@ import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
-from scipy import interpolate
-from scipy.interpolate import BSpline, splrep
-from scipy.optimize import brentq
-from scipy.stats import gaussian_kde, norm
 from textblob import TextBlob
+
+from app.financial_command_center.options_risk import implied_cdf, simulate
 
 warnings.filterwarnings("ignore")
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -881,225 +879,101 @@ def predict_stock_movement(hist: pd.DataFrame):
     return prediction, normalized_score, signals
 
 
-def filter_liquid_options(
-    options_dataframe: pd.DataFrame, min_volume: int, max_spread_ratio: float
-) -> pd.DataFrame:
-    return options_dataframe[
-        (options_dataframe["volume"] >= min_volume)
-        & (options_dataframe["bid"] > 0)
-        & ((options_dataframe["ask"] - options_dataframe["bid"]) / options_dataframe["ask"] <= max_spread_ratio)
-    ]
+NEW_YORK = "America/New_York"
 
 
-def call_bs_price(
-    spot_price: float,
-    strike_price: float,
-    time_to_expiry: float,
-    risk_free_rate: float,
-    volatility: float,
-) -> float:
-    if time_to_expiry <= 0:
-        return max(spot_price - strike_price, 0)
-    d1 = (
-        np.log(spot_price / strike_price)
-        + (risk_free_rate + 0.5 * volatility**2) * time_to_expiry
-    ) / (volatility * np.sqrt(time_to_expiry))
-    d2 = d1 - volatility * np.sqrt(time_to_expiry)
-    return spot_price * norm.cdf(d1) - strike_price * np.exp(-risk_free_rate * time_to_expiry) * norm.cdf(d2)
+def common_expirations(tickers: List[str]) -> Tuple[List[str], List[str]]:
+    """Future option expiry dates that every ticker trades, soonest first.
+
+    Returns (dates, tickers with no listed options). Those tickers are ignored when intersecting.
+    """
+    expirations, no_options = [], []
+    for ticker_symbol in tickers:
+        try:
+            dates = set(yf.Ticker(ticker_symbol).options)
+        except Exception:
+            dates = set()
+        if dates:
+            expirations.append(dates)
+        else:
+            no_options.append(ticker_symbol)
+    if not expirations:
+        return [], no_options
+    today = pd.Timestamp.now(tz=NEW_YORK).strftime("%Y-%m-%d")
+    return sorted(date for date in set.intersection(*expirations) if date > today), no_options
 
 
-def implied_vol_call(
-    price: float, spot_price: float, strike_price: float, time_to_expiry: float, risk_free_rate: float
-) -> float:
-    if time_to_expiry <= 0:
-        return np.nan
-
-    def objective(volatility):
-        return call_bs_price(spot_price, strike_price, time_to_expiry, risk_free_rate, volatility) - price
-
-    try:
-        return brentq(objective, 1e-9, 5.0)
-    except ValueError:
-        return np.nan
+def return_correlation(tickers: List[str]) -> np.ndarray:
+    """Correlation of daily returns over the past year, in the order given."""
+    if len(tickers) == 1:
+        return np.ones((1, 1))
+    closes = yf.download(list(tickers), period="1y", progress=False, auto_adjust=True)["Close"]
+    correlation = closes.pct_change().corr().reindex(index=tickers, columns=tickers).fillna(0).to_numpy(copy=True)
+    np.fill_diagonal(correlation, 1)
+    return correlation
 
 
-def build_pdf(
-    strike_grid: np.ndarray,
-    iv_spline_tck,
-    spot_price: float,
-    time_to_expiry: float,
-    risk_free_rate: float,
-) -> Tuple[np.ndarray, np.ndarray]:
-    implied_vols = BSpline(*iv_spline_tck)(strike_grid)
-    call_prices = np.array(
-        [
-            call_bs_price(spot_price, strike, time_to_expiry, risk_free_rate, volatility)
-            for strike, volatility in zip(strike_grid, implied_vols)
-        ]
-    )
-    first_derivative = np.gradient(call_prices, strike_grid)
-    second_derivative = np.gradient(first_derivative, strike_grid)
-    pdf_raw = np.exp(risk_free_rate * time_to_expiry) * second_derivative
-    pdf_raw = np.clip(pdf_raw, 0, None)
-    return strike_grid, pdf_raw
-
-
-def smooth_pdf(strike_grid: np.ndarray, pdf_raw: np.ndarray) -> np.ndarray:
-    kernel_density = gaussian_kde(strike_grid, weights=pdf_raw)
-    pdf_smoothed = kernel_density(strike_grid)
-    area = np.trapz(pdf_smoothed, strike_grid)
-    if area > 0:
-        pdf_smoothed /= area
-    return pdf_smoothed
-
-
-def intersection_of_lists(lists: List[List[str]]) -> List[str]:
-    """Returns the intersection of multiple lists."""
-    if not lists:
-        return []
-    intersection_set = set(lists[0])
-    for values in lists[1:]:
-        intersection_set &= set(values)
-    return list(intersection_set)
-
-
-def convolve_pdfs(x_lists: List[np.ndarray], pdf_lists: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
-    x_result = np.array(x_lists[0])
-    pdf_result = np.array(pdf_lists[0])
-
-    for list_index in range(1, len(x_lists)):
-        x_values = np.array(x_lists[list_index])
-        pdf_values = np.array(pdf_lists[list_index])
-        dx_result = np.mean(np.diff(x_result))
-        dx_values = np.mean(np.diff(x_values))
-        dx_step = min(dx_result, dx_values)
-        x_result_uniform = np.arange(x_result.min(), x_result.max(), dx_step)
-        x_values_uniform = np.arange(x_values.min(), x_values.max(), dx_step)
-        interpolated_result = interpolate.interp1d(
-            x_result, pdf_result, bounds_error=False, fill_value=0
-        )
-        interpolated_values = interpolate.interp1d(
-            x_values, pdf_values, bounds_error=False, fill_value=0
-        )
-        pdf_result_uniform = interpolated_result(x_result_uniform)
-        pdf_values_uniform = interpolated_values(x_values_uniform)
-        pdf_convolved = np.convolve(pdf_result_uniform, pdf_values_uniform) * dx_step
-        x_min_new = x_result_uniform.min() + x_values_uniform.min()
-        x_result = x_min_new + np.arange(len(pdf_convolved)) * dx_step
-        pdf_result = pdf_convolved
-
-    pdf_result = pdf_result / np.trapz(pdf_result, x_result)
-    return x_result, pdf_result
-
-
-def calculate_percentile(
-    x_values: np.ndarray, pdf_values: np.ndarray, percentile: float
-) -> float:
-    dx_values = np.diff(x_values)
-    pdf_midpoints = (pdf_values[:-1] + pdf_values[1:]) / 2
-    cdf = np.concatenate([[0], np.cumsum(pdf_midpoints * dx_values)])
-    cdf = cdf / cdf[-1]
-    target = percentile / 100.0
-    index = np.searchsorted(cdf, target)
-    if index == 0:
-        return x_values[0]
-    if index >= len(x_values):
-        return x_values[-1]
-    x_lower, x_upper = x_values[index - 1], x_values[index]
-    cdf_lower, cdf_upper = cdf[index - 1], cdf[index]
-    if cdf_upper == cdf_lower:
-        return x_lower
-    return x_lower + (x_upper - x_lower) * (target - cdf_lower) / (cdf_upper - cdf_lower)
-
-
-def calculate_probability_below(
-    x_values: np.ndarray, pdf_values: np.ndarray, threshold: float
-) -> float:
-    mask = x_values <= threshold
-    if not np.any(mask):
-        return 0.0
-    x_below = x_values[mask]
-    pdf_below = pdf_values[mask]
-    return np.trapz(pdf_below, x_below)
-
-
-def ticker_prediction(
-    ticker_index: int,
-    stock_list: pd.DataFrame,
-    possible_expirations: List[str],
-    expiration_index: int,
+def options_implied_values(
+    portfolio: pd.DataFrame,
+    expiry: str,
     risk_free_rate: float,
     min_volume: int,
     max_spread_ratio: float,
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-    import io
-    import sys
+) -> Dict[str, object]:
+    """Simulate what the positions are worth on the expiry date, as implied by option prices.
 
-    investment_value = stock_list["Value"].iloc[ticker_index]
-    ticker_symbol = stock_list["Stocks"].iloc[ticker_index]
+    Returns the simulated values ("positions", None if nothing could be modelled), the
+    rows that were modelled ("included") and why each other ticker was left out ("skipped").
+    """
+    years = (pd.Timestamp(f"{expiry} 16:00", tz=NEW_YORK) - pd.Timestamp.now(tz=NEW_YORK)).total_seconds() / (365 * 86400)
+    marginals, kept, skipped = [], [], {}
+    for ticker_symbol in portfolio["Stocks"]:
+        try:
+            chain = yf.Ticker(ticker_symbol).option_chain(expiry)
+            marginal = implied_cdf(chain.calls, chain.puts, years, risk_free_rate, min_volume, max_spread_ratio)
+        except Exception as error:
+            skipped[ticker_symbol] = f"data error: {str(error)[:80]}"
+            continue
+        if marginal is None:
+            skipped[ticker_symbol] = "too few liquid option quotes"
+        else:
+            marginals.append(marginal)
+            kept.append(ticker_symbol)
+    # Positions that could not be modelled leave every figure, including today's value.
+    included = portfolio[portfolio["Stocks"].isin(kept)]
+    positions = simulate(marginals, included["Value"], return_correlation(kept)) if kept else None
+    return {"expiry": expiry, "included": included, "skipped": skipped, "positions": positions}
 
-    time.sleep(0.5)
 
-    old_stdout = sys.stdout
-    old_stderr = sys.stderr
-    sys.stdout = io.StringIO()
-    sys.stderr = io.StringIO()
-
-    try:
-        ticker_data = yf.Ticker(ticker_symbol)
-        current_price = ticker_data.history(period="1d")["Close"].iloc[-1]
-        number_of_shares = investment_value / current_price
-
-        selected_expiry = possible_expirations[expiration_index]
-        option_chain = ticker_data.option_chain(selected_expiry)
-        calls_dataframe = option_chain.calls[
-            ["strike", "lastPrice", "bid", "ask", "volume"]
-        ].copy()
-
-        filtered_calls = filter_liquid_options(
-            calls_dataframe, min_volume=min_volume, max_spread_ratio=max_spread_ratio
-        )
-
-        time_to_expiry = (
-            pd.to_datetime(selected_expiry) - pd.Timestamp.today()
-        ).days / 365.0
-        spot_price = ticker_data.history().iloc[-1]["Close"]
-
-        filtered_calls["iv"] = filtered_calls.apply(
-            lambda row: implied_vol_call(
-                row["lastPrice"], spot_price, row["strike"], time_to_expiry, risk_free_rate
-            ),
-            axis=1,
-        )
-
-        filtered_calls.dropna(subset=["iv"], inplace=True)
-
-        if len(filtered_calls) < 4:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-            return None, None
-
-        strikes = filtered_calls["strike"].values
-        implied_vols = filtered_calls["iv"].values
-
-        iv_spline = splrep(strikes, implied_vols, s=10, k=3)
-        strike_grid = np.linspace(strikes.min(), strikes.max(), 300)
-
-        strike_grid_for_pdf, pdf_raw = build_pdf(
-            strike_grid, iv_spline, spot_price, time_to_expiry, risk_free_rate
-        )
-        pdf_smoothed = smooth_pdf(strike_grid_for_pdf, pdf_raw)
-        investment_grid = np.array([strike * number_of_shares for strike in strike_grid_for_pdf])
-        pdf_smoothed_over_investment = pdf_smoothed / number_of_shares
-
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        return investment_grid, pdf_smoothed_over_investment
-
-    except Exception:
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        raise
+def summarise_distribution(
+    result: Dict[str, object], free_capital: float, var_confidence: int, percentiles: List[int]
+) -> Dict[str, object]:
+    """Headline figures for the simulated values from options_implied_values."""
+    included = result["included"]
+    values = result["positions"] + free_capital
+    today = float(included["Value"].sum() + free_capital)
+    capital = float(included["Unleveraged Value"].sum() + free_capital)
+    var_value = float(np.percentile(values, 100 - var_confidence))
+    levels = sorted(percentiles)
+    return {
+        "values": values,
+        "today": today,
+        "capital": capital,
+        "leverage": today / capital,
+        "var_value": var_value,
+        "var_loss": today - var_value,
+        "mean": float(values.mean()),
+        "prob_profit": float((values > today).mean()),
+        "percentiles": [
+            {
+                "percentile": level,
+                "value": float(value),
+                "return_on_capital": float((value - today) / capital * 100),
+                "return_on_position": float((value / today - 1) * 100),
+            }
+            for level, value in zip(levels, np.percentile(values, levels) if levels else [])
+        ],
+    }
 
 
 def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:

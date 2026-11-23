@@ -1,7 +1,9 @@
 from typing import Optional
 
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
+from scipy.stats import gaussian_kde
 from plotly.subplots import make_subplots
 
 
@@ -133,63 +135,63 @@ def build_stock_analysis_chart(
         height=700,
         margin=dict(l=20, r=20, t=30, b=20),
         legend=dict(orientation="h"),
-        template="plotly_white",
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
     return figure
 
 
-def build_distribution_chart(
-    x_values,
-    pdf_values,
-    current_value,
-    expected_value,
-    var_value,
-    var_confidence,
-) -> go.Figure:
+# Colours for the dark theme both frontends use.
+PROFIT, LOSS, INK, MUTED, GRID = "#3987e5", "#e66767", "#f0efec", "#898781", "#2c2c2a"
+
+
+def build_distribution_chart(values, today, var_value, var_confidence, capital) -> go.Figure:
+    """Density of the simulated portfolio values, split into loss and profit around today's value."""
+    low, high = np.percentile(values, [0.1, 99.9])
+    density = gaussian_kde(values[:20_000])  # samples are independent, so a slice is a fair subsample
+    prob_loss = (values < today).mean()
     figure = go.Figure()
-
-    figure.add_trace(
-        go.Scatter(
-            x=x_values,
-            y=pdf_values,
-            mode="lines",
-            name="Implied PDF",
-            line=dict(color="#0ea5e9", width=3),
-            fill="tozeroy",
-            fillcolor="rgba(14, 165, 233, 0.15)",
+    for name, share, colour, fill, x in (
+        ("Loss", prob_loss, LOSS, "rgba(230,103,103,0.35)", np.linspace(low, today, 150)),
+        ("Profit", 1 - prob_loss, PROFIT, "rgba(57,135,229,0.35)", np.linspace(today, high, 150)),
+    ):
+        figure.add_trace(
+            go.Scatter(
+                x=x,
+                y=density(x),
+                customdata=(x - today) / capital,
+                name=f"{name} ({share:.0%} chance)",
+                mode="lines",
+                line=dict(color=colour, width=2),
+                fill="tozeroy",
+                fillcolor=fill,
+                hovertemplate="$%{x:,.0f} · %{customdata:+.1%} on your capital<extra></extra>",
+            )
         )
-    )
-
     figure.add_vline(
-        x=current_value,
-        line_dash="dash",
-        line_color="#ef4444",
-        line_width=2,
-        annotation_text=f"Current: ${current_value:,.2f}",
-    )
-    figure.add_vline(
-        x=expected_value,
-        line_dash="dash",
-        line_color="#22c55e",
-        line_width=2,
-        annotation_text=f"Expected: ${expected_value:,.2f}",
+        x=today,
+        line=dict(color=INK, width=1),
+        annotation=dict(text=f"Today ${today:,.0f}", font_color=INK),
+        annotation_position="top right",
     )
     figure.add_vline(
         x=var_value,
-        line_dash="dot",
-        line_color="#f59e0b",
-        line_width=2,
-        annotation_text=f"VaR {var_confidence}%: ${var_value:,.2f}",
+        line=dict(color=MUTED, width=1, dash="dash"),
+        annotation=dict(text=f"VaR {var_confidence}% ${var_value:,.0f}", font_color=INK),
+        annotation_position="top left",
     )
-
     figure.update_layout(
-        title="Implied Probability Density",
-        xaxis_title="Portfolio Value ($)",
-        yaxis_title="Probability Density",
-        template="plotly_white",
-        height=500,
+        height=420,
+        margin=dict(l=0, r=0, t=40, b=40),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=MUTED),
+        hovermode="x",
+        legend=dict(orientation="h", y=1.12, x=0, font_color=INK),
+        xaxis=dict(tickprefix="$", tickformat=",.0f", gridcolor=GRID, zeroline=False),
+        yaxis=dict(visible=False, rangemode="tozero"),
     )
-
     return figure
 
 
@@ -232,6 +234,7 @@ def build_pnl_simulation_chart(
         line_width=2,
         annotation_text=f"VaR 99.5%: -${var_995:,.0f}",
         annotation_position="top left",
+        annotation_yshift=16,
     )
     figure.add_vline(
         x=-tvar_995,
@@ -240,6 +243,7 @@ def build_pnl_simulation_chart(
         line_width=2,
         annotation_text=f"TVaR 99.5%: -${tvar_995:,.0f}",
         annotation_position="top left",
+        annotation_yshift=32,
     )
     figure.add_vline(
         x=float(sim_pnl.mean()),
@@ -253,9 +257,11 @@ def build_pnl_simulation_chart(
     figure.update_layout(
         xaxis_title="P&L ($)",
         yaxis_title="Frequency",
-        template="plotly_white",
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         height=420,
-        margin=dict(l=20, r=20, t=30, b=20),
+        margin=dict(l=20, r=20, t=60, b=20),
         showlegend=False,
     )
 
@@ -317,7 +323,9 @@ def build_risk_contribution_chart(
         title=title,
         xaxis_title="Contribution ($)",
         yaxis_title="",
-        template="plotly_white",
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         height=max(280, 40 * len(tickers) + 120),
         margin=dict(l=20, r=20, t=50, b=20),
         showlegend=False,
