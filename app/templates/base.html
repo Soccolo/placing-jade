@@ -4,34 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Placing Jade Terminal{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <header>
-        <nav>
-            <div class="logo">
-                <img src="/static/placing_jade_logo.png" alt="">
-                <span>Placing Jade</span>
-            </div>
-            <ul class="nav-links">
-                {% for href, section, label in [
-                    ("/dashboard", "/dashboard", "Dashboard"),
-                    ("/strategy", "/strategy", "Strategy"),
-                    ("/connect", "/connect", "Connect"),
-                    ("/command-center/market-ticker", "/command-center", "Command Center"),
-                ] %}
-                <li><a href="{{ href }}" {% if request.url.path.startswith(section) %}aria-current="page"{% endif %}>{{ label }}</a></li>
-                {% endfor %}
-            </ul>
-        </nav>
-    </header>
-    
-    <main>
-        {% block content %}{% endblock %}
-    </main>
-    
-    <footer>
-        <p>Placing Jade Terminal &mdash; Paper Trading Only</p>
-    </footer>
+    <nav class="rail" aria-label="Main">
+        <a class="rail-logo" href="/" aria-label="Placing Jade home"><img src="/static/placing_jade_logo.png" alt=""></a>
+        {% set path = request.url.path %}
+        {% for href, icon, label, sections in [
+            ("/dashboard", "gauge", "Dashboard", ["/dashboard"]),
+            ("/strategy", "target", "Strategy", ["/strategy"]),
+            ("/command-center/market-ticker", "activity", "Markets", ["/command-center/market-ticker"]),
+            ("/command-center/stock-research", "chart-candle", "Research", ["/command-center/stock-research"]),
+            ("/command-center/portfolio-calculator", "calculator", "Calculator", ["/command-center/portfolio-calculator"]),
+            ("/command-center/economic-news", "news", "News", ["/command-center/economic-news", "/command-center/insurance"]),
+            ("/connect", "plug", "Connect", ["/connect"]),
+        ] %}
+        {% set current = namespace(here=false) %}
+        {% for section in sections %}{% if path.startswith(section) %}{% set current.here = true %}{% endif %}{% endfor %}
+        <a href="{{ href }}" {% if loop.last %}class="rail-end"{% endif %} {% if current.here %}aria-current="page"{% endif %}>
+            <i class="ti ti-{{ icon }}" aria-hidden="true"></i>{{ label }}
+        </a>
+        {% endfor %}
+    </nav>
+
+    <div class="page">
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer>
+            <p>Placing Jade Terminal &mdash; Paper Trading Only</p>
+        </footer>
+    </div>
 </body>
 </html>

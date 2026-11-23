@@ -976,6 +976,32 @@ def summarise_distribution(
     }
 
 
+def options_outlook(holdings: Dict[str, float], cash: float) -> Optional[Dict[str, object]]:
+    """Chance the holdings are worth more on the first option expiry at least two weeks away.
+
+    `holdings` maps ticker to position value. Returns None when no holding has usable option quotes.
+    """
+    held = {ticker: value for ticker, value in holdings.items() if value > 0}
+    expirations, no_options = common_expirations(list(held))
+    portfolio = pd.DataFrame(
+        [(ticker, value, value) for ticker, value in held.items() if ticker not in no_options],
+        columns=["Stocks", "Value", "Unleveraged Value"],
+    )
+    if not expirations or portfolio.empty:
+        return None
+    cutoff = (pd.Timestamp.now(tz=NEW_YORK) + pd.Timedelta(days=14)).strftime("%Y-%m-%d")
+    expiry = next((date for date in expirations if date >= cutoff), expirations[-1])
+    result = options_implied_values(portfolio, expiry, risk_free_rate=0.04, min_volume=20, max_spread_ratio=0.2)
+    if result["positions"] is None:
+        return None
+    stats = summarise_distribution(result, max(cash, 0.0), var_confidence=95, percentiles=[])
+    return {
+        "prob_profit": stats["prob_profit"] * 100,
+        "expiry": expiry,
+        "coverage": float(result["included"]["Value"].sum() / sum(held.values()) * 100),
+    }
+
+
 def get_insurance_company_data() -> Dict[str, List[Dict[str, object]]]:
     uk_insurers = {
         "AV.L": {"name": "Aviva", "type": "Composite", "market": "FTSE 100"},

@@ -73,3 +73,6 @@ except (ValueError, TypeError) as e:
         f"Invalid WEIGHT_SUM_EPSILON environment variable: '{env_value}'. "
         f"Must be a numeric value (e.g., '0.01'). Error: {e}"
     )
+
+# One-day loss limit the dashboard's risk dial is measured against, as a percentage of portfolio value
+RISK_BUDGET_PCT = float(os.getenv("RISK_BUDGET_PCT", "5"))
