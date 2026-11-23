@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.routes import dashboard  # noqa: E402
+from app.services import overview  # noqa: E402
 from app.services.alpaca import AccountInfo, AlpacaAccountData, Position  # noqa: E402
 
 
@@ -29,17 +30,17 @@ def fake_download(tickers, **_):
 
 def test_strategy_alignment_is_the_share_already_at_target():
     targets = {"AAA": 0.5, "BBB": 0.5}
-    assert dashboard.strategy_alignment([position("AAA", 500), position("BBB", 500)], 1000, targets) == 100
+    assert overview.strategy_alignment([position("AAA", 500), position("BBB", 500)], 1000, targets) == 100
     # Half in the right stock, half in cash: half the portfolio still has to move.
-    assert dashboard.strategy_alignment([position("AAA", 500)], 1000, targets) == 50
+    assert overview.strategy_alignment([position("AAA", 500)], 1000, targets) == 50
     # Nothing in common with the strategy.
-    assert dashboard.strategy_alignment([position("ZZZ", 1000)], 1000, targets) == 0
-    assert dashboard.strategy_alignment([position("AAA", 500)], 1000, {}) is None
+    assert overview.strategy_alignment([position("ZZZ", 1000)], 1000, targets) == 0
+    assert overview.strategy_alignment([position("AAA", 500)], 1000, {}) is None
 
 
 def test_allocation_strip_groups_the_tail_and_shows_cash():
     positions = [position(symbol, value) for symbol, value in zip("ABCDEFG", (300, 200, 150, 100, 80, 40, 30))]
-    parts = dashboard.allocation_strip(positions, 1000)
+    parts = overview.allocation_strip(positions, 1000)
     assert [part["label"] for part in parts] == ["A", "B", "C", "D", "E", "Other", "Cash"]
     assert round(parts[5]["weight"]) == 7 and round(parts[6]["weight"]) == 10
     assert round(sum(part["weight"] for part in parts)) == 100

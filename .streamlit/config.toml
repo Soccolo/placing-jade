@@ -1,7 +1,12 @@
 [theme]
 base = "dark"
-primaryColor = "#60a5fa"
-backgroundColor = "#0b1020"
-secondaryBackgroundColor = "#111827"
-textColor = "#e5e7eb"
+primaryColor = "#3a73a3"
+linkColor = "#8fd3ff"
+backgroundColor = "#0d1424"
+secondaryBackgroundColor = "#131c31"
+textColor = "#dfe6f3"
+borderColor = "#1d2740"
 font = "sans serif"
+
+[theme.sidebar]
+backgroundColor = "#101829"

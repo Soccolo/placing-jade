@@ -1,0 +1,51 @@
+{# A ring drawn with CSS rather than SVG: Streamlit's HTML sanitiser strips inline SVG. #}
+{% macro dial(value, label, caption="", colour="var(--color-primary)") %}
+<div class="dial">
+    <div class="dial-ring" role="img" aria-label="{{ label }}: {{ "%.0f%%" % value if value is not none else "not calculated" }}"
+         style="--dial-value: {{ "%.1f" % ([value, 100] | min) if value is not none else 0 }}; --dial-colour: {{ colour }};">
+        <span>{{ "%.0f%%" % value if value is not none else "–" }}</span>
+    </div>
+    <div class="dial-label">{{ label }}</div>
+    {% if caption %}<div class="dial-caption">{{ caption }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+
+{# The dashboard's three dials and allocation strip. Used by the FastAPI dashboard and the Streamlit app. #}
+{% macro overview_panel(overview, risk) %}
+<div class="dial-grid">
+    {% if risk and not risk.error %}
+    {{ dial(risk.risk_used, "Risk budget used", "of a %g%% one-day loss limit" % risk.risk_budget_pct,
+            "var(--color-danger)" if risk.risk_used > 100 else "var(--color-accent)") }}
+    {% else %}
+    {{ dial(none, "Risk budget used", "Run the risk check to fill this in") }}
+    {% endif %}
+
+    {{ dial(overview.alignment, "In line with strategy",
+            "Share of the portfolio already at its target" if overview.alignment is not none else "No valid strategy file") }}
+
+    {% if risk and not risk.error and risk.outlook %}
+    {{ dial(risk.outlook.prob_profit, "Chance of profit by " ~ risk.outlook.expiry,
+            "Implied by option prices" ~ (", covering %.0f%% of holdings" % risk.outlook.coverage if risk.outlook.coverage < 99.5 else "")) }}
+    {% elif risk and not risk.error %}
+    {{ dial(none, "Chance of profit", "Not enough option quotes for these holdings") }}
+    {% else %}
+    {{ dial(none, "Chance of profit", "Run the risk check to fill this in") }}
+    {% endif %}
+</div>
+
+{% if overview.allocation %}
+{% set shades = ["#8fd3ff", "#6fb4e6", "#5092c6", "#3a73a3", "#2b577f", "#22436a"] %}
+<div class="alloc-title">Where the money is</div>
+<div class="alloc-strip">
+    {% for part in overview.allocation %}
+    <span style="flex: {{ "%.2f" % part.weight }}; background-color: {{ "var(--color-border)" if part.label == "Cash" else shades[loop.index0] }};"></span>
+    {% endfor %}
+</div>
+<div class="alloc-legend">
+    {% for part in overview.allocation %}
+    <span><i style="background-color: {{ "var(--color-border)" if part.label == "Cash" else shades[loop.index0] }};"></i>{{ part.label }} {{ "%.0f" % part.weight }}%</span>
+    {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
