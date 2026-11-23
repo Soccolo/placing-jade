@@ -1,11 +1,13 @@
 import asyncio
 import os
+import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 import yfinance as yf
+from jinja2 import Environment, FileSystemLoader
 
 st.set_page_config(page_title="Placing Jade Terminal", page_icon="💎", layout="wide")
 
@@ -53,6 +55,7 @@ from app.financial_command_center.logic import (
     predict_stock_movement,
     simulate_portfolio_pnl,
     options_implied_values,
+    options_outlook,
     summarise_distribution,
 )
 from app.services.alpaca import fetch_account_data, verify_connection
@@ -63,7 +66,8 @@ from app.services.credentials import (
     save_credentials,
     update_connection_status,
 )
-from app.config import TARGET_PORTFOLIO_PATH, WEIGHT_SUM_EPSILON
+from app.config import RISK_BUDGET_PCT, TARGET_PORTFOLIO_PATH, WEIGHT_SUM_EPSILON
+from app.services.overview import build_overview, risk_budget_used
 from app.services.portfolio import clear_portfolio_cache, get_portfolio
 
 
@@ -77,10 +81,17 @@ def ensure_db():
     return True
 
 
-def show_logo():
-    logo_path = Path(__file__).parent / "app" / "static" / "placing_jade_logo.png"
-    if logo_path.exists():
-        st.sidebar.image(str(logo_path), width=120)
+APP_DIR = Path(__file__).parent / "app"
+
+
+@st.cache_resource
+def overview_markup():
+    """The dashboard's dials and allocation strip: the same template and styles the FastAPI site uses."""
+    templates = Environment(loader=FileSystemLoader(APP_DIR / "templates"), autoescape=True)
+    panel = templates.get_template("partials/overview.html").module.overview_panel
+    colours = re.search(r":root \{.*?\}", (APP_DIR / "static" / "style.css").read_text(encoding="utf-8"), re.S).group(0)
+    styles = (APP_DIR / "static" / "overview.css").read_text(encoding="utf-8")
+    return panel, f"<style>{colours}\n{styles}</style>"
 
 
 def render_connect():
@@ -212,11 +223,44 @@ def render_dashboard():
         st.info("No account data available yet.")
         return
 
-    cols = st.columns(4)
-    cols[0].metric("Portfolio Value", f"${data.account.portfolio_value:,.2f}")
-    cols[1].metric("Equity", f"${data.account.equity:,.2f}")
-    cols[2].metric("Cash", f"${data.account.cash:,.2f}")
-    cols[3].metric("Buying Power", f"${data.account.buying_power:,.2f}")
+    account, positions = data.account, data.positions
+    tickers = [p.symbol for p in positions]
+    # A risk check only counts for the positions it was run on.
+    checked = st.session_state.get("sim_tickers") == tickers
+    sim = st.session_state.get("sim_result") if checked else None
+    if sim is None:
+        risk = None
+    elif "error" in sim:
+        risk = {"error": sim["error"]}
+    else:
+        risk = {
+            "risk_used": risk_budget_used(sim["var_995"], account.portfolio_value),
+            "risk_budget_pct": RISK_BUDGET_PCT,
+            "outlook": st.session_state.get("outlook"),
+        }
+
+    st.caption(f"${account.portfolio_value:,.0f} across {len(positions)} holding{'' if len(positions) == 1 else 's'}".replace("$", "\\$"))
+    panel, styles = overview_markup()
+    st.html(styles + str(panel(build_overview(account, positions), risk)))
+
+    cols = st.columns(3)
+    cols[0].metric("Equity", f"${account.equity:,.2f}")
+    cols[1].metric("Cash", f"${account.cash:,.2f}")
+    cols[2].metric("Buying Power", f"${account.buying_power:,.2f}")
+
+    if positions and st.button(
+        "Run risk check again" if checked else "Run risk check",
+        type="primary",
+        help="Simulates 10,000 one-day scenarios and reads option prices. Takes up to a minute.",
+    ):
+        with st.spinner("Running the risk check…"):
+            st.session_state["sim_result"] = simulate_portfolio_pnl(tickers, [float(p.qty) for p in positions])
+            try:
+                st.session_state["outlook"] = options_outlook({p.symbol: p.market_value for p in positions}, account.cash)
+            except Exception:
+                st.session_state["outlook"] = None  # the dial then says option data is missing
+            st.session_state["sim_tickers"] = tickers
+        st.rerun()
     st.caption(f"Last refreshed: {data.fetched_at} UTC")
 
     positions_df = pd.DataFrame(
@@ -243,17 +287,10 @@ def render_dashboard():
         st.divider()
         st.subheader("Portfolio Risk Simulation")
 
-        if st.button("Run Simulation") or "sim_result" in st.session_state:
-            tickers = [p.symbol for p in data.positions]
-            quantities = [float(p.qty) for p in data.positions]
-
-            if "sim_result" not in st.session_state or st.session_state.get("sim_tickers") != tickers:
-                with st.spinner("Running 10,000 Monte Carlo scenarios..."):
-                    result = simulate_portfolio_pnl(tickers, quantities)
-                    st.session_state["sim_result"] = result
-                    st.session_state["sim_tickers"] = tickers
-
-            result = st.session_state.get("sim_result")
+        if not checked:
+            st.caption("Run the risk check above to see the simulation.")
+        else:
+            result = sim
 
             if result is None or "error" in result:
                 error_msg = result.get("error", "Unknown error") if result else "Simulation returned no result."
@@ -426,7 +463,7 @@ def render_strategy():
 
 
 def render_market_ticker():
-    st.subheader("Live Market Ticker")
+    st.header("Markets")
     api_keys = get_api_keys()
     show_debug = st.checkbox("Show API debug info")
 
@@ -462,7 +499,7 @@ def render_market_ticker():
 
 
 def render_stock_research():
-    st.subheader("Stock Research & Analysis")
+    st.header("Stock Research & Analysis")
     api_keys = get_api_keys()
 
     with st.form("stock_research_form"):
@@ -539,7 +576,7 @@ def cached_expirations(tickers):
 
 
 def render_portfolio_calculator():
-    st.subheader("Portfolio Calculator")
+    st.header("Portfolio Calculator")
     st.caption("What the options market implies about your portfolio's value on a future date.")
 
     with st.expander("Settings"):
@@ -756,46 +793,35 @@ def render_insurance_tracker():
     st.dataframe(pd.DataFrame(company_data["global_brokers"]), use_container_width=True)
 
 
-def render_command_center():
-    st.header("Financial Command Center")
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-        [
-            "Live Market Ticker",
-            "Stock Research",
-            "Portfolio Calculator",
-            "Economic News",
-            "Insurance News",
-            "Insurance Tracker",
-        ]
-    )
-    with tab1:
-        render_market_ticker()
-    with tab2:
-        render_stock_research()
-    with tab3:
-        render_portfolio_calculator()
-    with tab4:
+def render_news_page():
+    st.header("News")
+    economic, insurance, tracker = st.tabs(["Economic News", "Insurance News", "Insurance Tracker"])
+    with economic:
         render_news("Economic News", get_economic_news)
-    with tab5:
+    with insurance:
         render_news("Insurance News", get_insurance_news)
-    with tab6:
+    with tracker:
         render_insurance_tracker()
 
 
 def main():
     ensure_db()
-    show_logo()
-    st.sidebar.title("Placing Jade Terminal")
-    page = st.sidebar.radio("Navigation", ["Connect", "Dashboard", "Strategy", "Command Center"])
-
-    if page == "Connect":
-        render_connect()
-    elif page == "Dashboard":
-        render_dashboard()
-    elif page == "Strategy":
-        render_strategy()
-    else:
-        render_command_center()
+    logo_path = APP_DIR / "static" / "placing_jade_logo.png"
+    if logo_path.exists():
+        st.logo(str(logo_path), size="large")
+    # Same sections, in the same order, as the FastAPI site's side rail.
+    page = st.navigation(
+        [
+            st.Page(render_dashboard, title="Dashboard", icon=":material/speed:", url_path="dashboard", default=True),
+            st.Page(render_strategy, title="Strategy", icon=":material/target:", url_path="strategy"),
+            st.Page(render_market_ticker, title="Markets", icon=":material/monitoring:", url_path="markets"),
+            st.Page(render_stock_research, title="Research", icon=":material/candlestick_chart:", url_path="research"),
+            st.Page(render_portfolio_calculator, title="Calculator", icon=":material/calculate:", url_path="calculator"),
+            st.Page(render_news_page, title="News", icon=":material/newspaper:", url_path="news"),
+            st.Page(render_connect, title="Connect", icon=":material/link:", url_path="connect"),
+        ]
+    )
+    page.run()
 
 
 if __name__ == "__main__":
